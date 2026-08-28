@@ -1,11 +1,12 @@
+import logging
+import time
 from contextlib import contextmanager
+
 from sqlalchemy import create_engine, text
 from sqlalchemy.orm import sessionmaker
-import time
-import logging
 
-from lad.schemas.config import conf
 from lad.models.db import Base
+from lad.schemas.config import conf
 
 logger = logging.getLogger("Lad")
 

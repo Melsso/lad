@@ -1,11 +1,7 @@
-from sqlalchemy import (
-    DateTime,
-    ForeignKey,
-    Text,
-    String
-)
-from sqlalchemy.orm import Mapped, mapped_column, DeclarativeBase
-from datetime import datetime, timezone
+from datetime import UTC, datetime
+
+from sqlalchemy import DateTime, ForeignKey, String, Text
+from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
 
 class Base(DeclarativeBase):
@@ -19,7 +15,7 @@ class Chat(Base):
     title: Mapped[str] = mapped_column(String(255), nullable=False)
     
     created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), default=lambda: datetime.now(timezone.utc)
+        DateTime(timezone=True), default=lambda: datetime.now(UTC)
     )
 
 
@@ -35,5 +31,5 @@ class Messages(Base):
     role: Mapped[str] = mapped_column(String(20), nullable=False)
 
     created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), default=lambda: datetime.now(timezone.utc)
+        DateTime(timezone=True), default=lambda: datetime.now(UTC)
     )

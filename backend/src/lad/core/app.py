@@ -2,8 +2,8 @@ from fastapi import FastAPI
 
 from lad.core.logging import setup_logging
 from lad.core.startup import register_startup_events
+from lad.routes.app import app_router
 
-# TODO ADD ROUTES HERE IMPORT
 
 def create_app() -> FastAPI:
 
@@ -15,8 +15,7 @@ def create_app() -> FastAPI:
         version="1.0.0",
     )
 
-    # TODO INCLUDE ROUTES HERE
-    # app.include_router(ws_router, prefix="/api")
+    app.include_router(app_router)
 
     register_startup_events(app)
 
