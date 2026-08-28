@@ -4,3 +4,10 @@ __pycache__/
 
 .ruff_cache/
 .mypy_cache/
+
+node_modules/
+dist/
+
+.idea/
+.vscode/
+.DS_Store
