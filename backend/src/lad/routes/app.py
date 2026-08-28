@@ -1,7 +1,7 @@
 import logging
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, Request
+from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
@@ -14,7 +14,7 @@ logger = logging.getLogger("Lad")
 
 
 @app_router.get("/", response_model=list[ChatResponse])
-async def session_status(
+async def chats(
     request: Request,
     db: Annotated[Session, Depends(get_db)],
 ):
@@ -36,4 +36,7 @@ async def session_status(
                 },
             },
         )
-        return []
+        raise HTTPException(
+            status_code=500,
+            detail="Database error while processing message",
+        ) from exc
