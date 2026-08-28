@@ -1,0 +1,32 @@
+services:
+  nginx:
+    build:
+      context: .
+      dockerfile: ./infra/Dockerfile.nginx
+    container_name: lad-nginx
+    ports:
+      - "8000:80"
+    depends_on:
+      - api
+    networks:
+      - lad_network
+
+  api:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    env_file:
+      - ./backend/.env
+    networks:
+      - lad_network
+    expose:
+      - "8000"
+    labels:
+      service: "api"
+
+volumes:
+  postgres_data:
+
+networks:
+  lad_network:
+    external: true
