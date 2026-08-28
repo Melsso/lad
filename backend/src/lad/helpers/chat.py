@@ -7,7 +7,4 @@ from lad.schemas.chat import ChatResponse
 def get_chats(db: Session) -> list[ChatResponse]:
     chats = db.query(Chat).order_by(Chat.created_at).all()
 
-    return [
-        ChatResponse.model_validate(chat)
-        for chat in chats
-    ]
+    return [ChatResponse.model_validate(chat) for chat in chats]

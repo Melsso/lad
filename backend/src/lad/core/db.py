@@ -3,6 +3,7 @@ import time
 from contextlib import contextmanager
 
 from sqlalchemy import create_engine, text
+from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import sessionmaker
 
 from lad.models.db import Base
@@ -49,7 +50,7 @@ def init_db():
             )
             break
 
-        except Exception as exc:
+        except SQLAlchemyError as exc:
             logger.error(
                 "lad_event",
                 extra={

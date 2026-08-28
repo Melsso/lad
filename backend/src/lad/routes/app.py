@@ -2,6 +2,7 @@ import logging
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, Request
+from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
 from lad.core.db import get_db
@@ -19,7 +20,7 @@ async def session_status(
 ):
     try:
         return get_chats(db=db)
-    except Exception as exc:
+    except SQLAlchemyError as exc:
         logger.exception(
             "lad_event",
             extra={
