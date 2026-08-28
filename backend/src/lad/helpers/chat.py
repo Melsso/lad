@@ -23,6 +23,45 @@ def get_chat_messages(db: Session, chat_id: int) -> list[ChatMessageResponse]:
     return [ChatMessageResponse.model_validate(msg) for msg in chat_msgs]
 
 
+def get_chat(db: Session, chat_id: int) -> Chat | None:
+    return db.query(Chat).filter(Chat.id == chat_id).first()
+
+
+def create_chat(db: Session, title: str) -> Chat:
+    chat = Chat(title=title)
+
+    db.add(chat)
+    db.flush()
+
+    return chat
+
+
+def generate_temporary_chat_title(msg: str) -> str:
+    title = " ".join(msg.strip().split())
+
+    if not title:
+        return "New Chat"
+
+    max_length = 50
+
+    if len(title) <= max_length:
+        return title
+
+    return title[: max_length - 3].rstrip() + "..."
+
+
+def update_chat_title(db: Session, chat_id: int, title: str) -> Chat | None:
+    chat = get_chat(db, chat_id)
+
+    if chat is None:
+        return None
+
+    chat.title = title.strip()
+    db.flush()
+
+    return chat
+
+
 def get_chat_summary(db: Session, chat_id: int) -> ConversationSummary | None:
     return (
         db.query(ConversationSummary)

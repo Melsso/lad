@@ -1,6 +1,8 @@
 import { useState } from "react";
 import type { FormEvent } from "react";
-import { sendMessage } from "../../services/chat";
+import { useNavigate } from "react-router-dom";
+
+import { createChat, sendMessage } from "../../services/chat";
 
 interface MessageInputProps {
   chatId: number | null;
@@ -8,26 +10,35 @@ interface MessageInputProps {
 }
 
 export function MessageInput({ chatId, onMessageSent }: MessageInputProps) {
+  const navigate = useNavigate();
   const [message, setMessage] = useState("");
   const [sending, setSending] = useState(false);
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
 
-    if (chatId === null || !message.trim() || sending) {
+    const content = message.trim();
+    if (!content || sending) {
       return;
     }
 
-    const content = message.trim();
-
-    setMessage("");
     setSending(true);
 
     try {
+      let selectedChatId = chatId;
+      if (selectedChatId === null) {
+        const chat = await createChat(content);
+        selectedChatId = chat.id;
+      }
+
       await sendMessage({
-        chat_id: chatId,
+        chat_id: selectedChatId,
         msg: content,
       });
+
+      setMessage("");
+
+      navigate(`/chat/${selectedChatId}`);
 
       onMessageSent?.();
     } finally {
@@ -41,14 +52,11 @@ export function MessageInput({ chatId, onMessageSent }: MessageInputProps) {
         type="text"
         value={message}
         onChange={(event) => setMessage(event.target.value)}
-        placeholder={chatId === null ? "Select a chat..." : "Message LAD..."}
-        disabled={chatId === null || sending}
+        placeholder="Message LAD..."
+        disabled={sending}
       />
 
-      <button
-        type="submit"
-        disabled={chatId === null || !message.trim() || sending}
-      >
+      <button type="submit" disabled={!message.trim() || sending}>
         {sending ? "..." : "Send"}
       </button>
     </form>

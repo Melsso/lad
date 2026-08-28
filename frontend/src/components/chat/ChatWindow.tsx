@@ -5,38 +5,25 @@ import type { ChatMessage } from "../../types/chat";
 import { ChatMessage as ChatMessageComponent } from "./ChatMessage";
 
 interface ChatWindowProps {
-  chatId: number | null;
+  chatId: number;
+  refreshKey: number;
 }
 
-export function ChatWindow({ chatId }: ChatWindowProps) {
+export function ChatWindow({ chatId, refreshKey }: ChatWindowProps) {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<Error | null>(null);
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    if (chatId === null) {
-      return;
-    }
-
-    const selectedChatId = chatId;
-
     let cancelled = false;
 
     async function loadMessages() {
       setLoading(true);
-      setError(null);
 
       try {
-        const result = await getChatMessages(selectedChatId);
+        const result = await getChatMessages(chatId);
 
         if (!cancelled) {
           setMessages(result);
-        }
-      } catch (err) {
-        if (!cancelled) {
-          setError(
-            err instanceof Error ? err : new Error("Failed to load messages"),
-          );
         }
       } finally {
         if (!cancelled) {
@@ -50,28 +37,16 @@ export function ChatWindow({ chatId }: ChatWindowProps) {
     return () => {
       cancelled = true;
     };
-  }, [chatId]);
-
-  if (chatId === null) {
-    return (
-      <div className="chat-window empty">
-        <p>Select a chat to get started.</p>
-      </div>
-    );
-  }
+  }, [chatId, refreshKey]);
 
   return (
     <div className="chat-window">
-      {loading && <p>Loading...</p>}
-
-      {error && <p>Failed to load messages.</p>}
-
-      {!loading && !error && (
-        <div className="messages">
-          {messages.map((message) => (
-            <ChatMessageComponent key={message.id} message={message} />
-          ))}
-        </div>
+      {loading ? (
+        <div>Loading...</div>
+      ) : (
+        messages.map((message) => (
+          <ChatMessageComponent key={message.id} message={message} />
+        ))
       )}
     </div>
   );

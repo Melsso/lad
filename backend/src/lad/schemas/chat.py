@@ -26,3 +26,12 @@ class ChatMessageResponse(BaseModel):
 class SendMessageRequest(BaseModel):
     chat_id: int
     msg: str
+
+
+class CreateChatRequest(BaseModel):
+    title: str | None = None
+
+
+class UpdateChatTitleRequest(BaseModel):
+    chat_id: int
+    title: str
