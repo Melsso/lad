@@ -1,0 +1,40 @@
+{
+  "version": 1,
+  "disable_existing_loggers": false,
+
+  "formatters": {
+    "json": {
+      "()": "lad.core.logging.JsonFormatter"
+    }
+  },
+
+  "handlers": {
+    "console": {
+      "class": "logging.StreamHandler",
+      "formatter": "json"
+    }
+  },
+
+  "loggers": {
+    "uvicorn": {
+      "handlers": ["console"],
+      "level": "INFO",
+      "propagate": false
+    },
+    "uvicorn.error": {
+      "handlers": ["console"],
+      "level": "INFO",
+      "propagate": false
+    },
+    "uvicorn.access": {
+      "handlers": ["console"],
+      "level": "INFO",
+      "propagate": false
+    },
+    "lad": {
+      "handlers": ["console"],
+      "level": "INFO",
+      "propagate": false
+    }
+  }
+}
