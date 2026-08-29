@@ -16,3 +16,10 @@ export interface SendMessageRequest {
   chat_id: number;
   msg: string;
 }
+
+export interface StreamMessageHandlers {
+  onChunk: (text: string) => void;
+  onDone: (message: ChatMessage) => void;
+  onError: (detail: string) => void;
+  signal?: AbortSignal;
+}

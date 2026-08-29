@@ -1,9 +1,16 @@
+import logging
+from collections.abc import Iterator
+
 from sqlalchemy.orm import Session
 
-from lad.helpers.llm import generate_response, generate_summary
+from lad.core.db import get_db_session
+from lad.core.sse import format_sse_event
+from lad.helpers.llm import generate_response_stream, generate_summary
 from lad.models.db import Chat, ConversationSummary, Messages
 from lad.schemas.chat import ChatMessageResponse, ChatResponse
 from lad.schemas.config import conf
+
+logger = logging.getLogger("Lad")
 
 
 def get_chats(db: Session) -> list[ChatResponse]:
@@ -115,53 +122,92 @@ def save_chat_summary(
     return summary
 
 
-def process_chat_msg(db: Session, chat_id: int, msg: str) -> ChatMessageResponse:
-    chat = db.query(Chat).filter(Chat.id == chat_id).first()
+def stream_chat_msg(chat_id: int, msg: str) -> Iterator[str]:
+    with get_db_session() as db:
+        try:
+            chat = get_chat(db=db, chat_id=chat_id)
 
-    if chat is None:
-        raise ValueError(f"Chat {chat_id} does not exist")
-    try:
-        create_message(
-            db=db,
-            chat_id=chat_id,
-            role="user",
-            content=msg,
-        )
-        summary = get_chat_summary(db=db, chat_id=chat_id)
-        active_messages = get_messages_after_summary(
-            db=db,
-            chat_id=chat_id,
-            last_message_id=summary.last_message_id if summary else None,
-        )
-
-        if len(active_messages) >= conf.SUMMARY_THRESHOLD:
-            messages_to_summarize = active_messages[: -conf.RECENT_MESSAGES_TO_KEEP]
-            if messages_to_summarize:
-                new_summary = generate_summary(
-                    existing_summary=(summary.content if summary else None),
-                    messages=messages_to_summarize,
+            if chat is None:
+                yield format_sse_event(
+                    "error", {"detail": f"Chat {chat_id} does not exist"}
                 )
+                return
 
-                summary = save_chat_summary(
-                    db=db,
-                    chat_id=chat_id,
-                    content=new_summary,
-                    last_message_id=messages_to_summarize[-1].id,
-                )
-                active_messages = active_messages[-conf.RECENT_MESSAGES_TO_KEEP :]
+            create_message(
+                db=db,
+                chat_id=chat_id,
+                role="user",
+                content=msg,
+            )
+            db.commit()
 
-        response_text = generate_response(
-            summary=summary.content if summary else None,
-            messages=active_messages,
-        )
-        assistant_message = create_message(
-            db=db,
-            chat_id=chat_id,
-            role="assistant",
-            content=response_text,
-        )
-        db.commit()
-        return ChatMessageResponse.model_validate(assistant_message)
-    except Exception:
-        db.rollback()
-        raise
+            summary = get_chat_summary(db=db, chat_id=chat_id)
+            active_messages = get_messages_after_summary(
+                db=db,
+                chat_id=chat_id,
+                last_message_id=summary.last_message_id if summary else None,
+            )
+
+            if len(active_messages) >= conf.SUMMARY_THRESHOLD:
+                messages_to_summarize = active_messages[: -conf.RECENT_MESSAGES_TO_KEEP]
+                if messages_to_summarize:
+                    new_summary = generate_summary(
+                        existing_summary=(summary.content if summary else None),
+                        messages=messages_to_summarize,
+                    )
+
+                    summary = save_chat_summary(
+                        db=db,
+                        chat_id=chat_id,
+                        content=new_summary,
+                        last_message_id=messages_to_summarize[-1].id,
+                    )
+                    active_messages = active_messages[-conf.RECENT_MESSAGES_TO_KEEP :]
+                    db.commit()
+
+            full_response = ""
+
+            for chunk in generate_response_stream(
+                summary=summary.content if summary else None,
+                messages=active_messages,
+            ):
+                full_response += chunk
+                yield format_sse_event("chunk", {"text": chunk})
+
+            full_response = full_response.strip()
+
+            if not full_response:
+                raise RuntimeError("LLM returned an empty response")
+
+            assistant_message = create_message(
+                db=db,
+                chat_id=chat_id,
+                role="assistant",
+                content=full_response,
+            )
+            db.commit()
+
+            payload = ChatMessageResponse.model_validate(assistant_message).model_dump(
+                mode="json"
+            )
+
+            yield format_sse_event("done", payload)
+
+        except Exception as exc:
+            db.rollback()
+
+            logger.exception(
+                "lad_event",
+                extra={
+                    "event": "chat_stream",
+                    "status": "internal_error",
+                    "context": {
+                        "location": "stream_chat_msg",
+                        "chat_id": chat_id,
+                        "error_type": type(exc).__name__,
+                        "error_message": str(exc),
+                    },
+                },
+            )
+
+            yield format_sse_event("error", {"detail": "Failed to generate a response"})

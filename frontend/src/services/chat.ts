@@ -1,5 +1,12 @@
 import { api } from "./api";
-import type { Chat, ChatMessage, SendMessageRequest } from "../types/chat";
+import type {
+  Chat,
+  ChatMessage,
+  SendMessageRequest,
+  StreamMessageHandlers,
+} from "../types/chat";
+
+const API_BASE_URL = "/api";
 
 export function getChats(): Promise<Chat[]> {
   return api<Chat[]>("/app/");
@@ -28,9 +35,89 @@ export function updateChatTitle(chatId: number, title: string): Promise<Chat> {
   });
 }
 
-export function sendMessage(request: SendMessageRequest): Promise<ChatMessage> {
-  return api<ChatMessage>("/chat/msg", {
-    method: "POST",
-    body: JSON.stringify(request),
-  });
+function processEvent(rawEvent: string, handlers: StreamMessageHandlers) {
+  const lines = rawEvent.split("\n");
+  let eventType = "message";
+  let data = "";
+
+  for (const line of lines) {
+    if (line.startsWith("event:")) {
+      eventType = line.slice(6).trim();
+    } else if (line.startsWith("data:")) {
+      data = line.slice(5).trim();
+    }
+  }
+
+  if (!data) {
+    return;
+  }
+
+  const parsed = JSON.parse(data);
+
+  if (eventType === "chunk") {
+    handlers.onChunk(parsed.text as string);
+  } else if (eventType === "done") {
+    handlers.onDone(parsed as ChatMessage);
+  } else if (eventType === "error") {
+    handlers.onError(parsed.detail as string);
+  }
+}
+
+export async function streamMessage(
+  request: SendMessageRequest,
+  handlers: StreamMessageHandlers,
+): Promise<void> {
+  let response: Response;
+
+  try {
+    response = await fetch(`${API_BASE_URL}/chat/msg/stream`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(request),
+      signal: handlers.signal,
+    });
+  } catch (err) {
+    if (err instanceof DOMException && err.name === "AbortError") {
+      throw err;
+    }
+
+    handlers.onError("Could not reach the server.");
+    return;
+  }
+
+  if (!response.ok || !response.body) {
+    handlers.onError("Failed to send message.");
+    return;
+  }
+
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+
+  try {
+    while (true) {
+      const { value, done } = await reader.read();
+
+      if (done) {
+        break;
+      }
+
+      buffer += decoder.decode(value, { stream: true });
+
+      const events = buffer.split("\n\n");
+      buffer = events.pop() ?? "";
+
+      for (const rawEvent of events) {
+        processEvent(rawEvent, handlers);
+      }
+    }
+  } catch (err) {
+    if (err instanceof DOMException && err.name === "AbortError") {
+      throw err;
+    }
+
+    handlers.onError("Connection lost while receiving the response.");
+  }
 }

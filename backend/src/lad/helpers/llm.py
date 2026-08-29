@@ -1,6 +1,6 @@
-from collections.abc import Sequence
+from collections.abc import Iterator, Sequence
 
-from lad.core.llm import generate_content
+from lad.core.llm import generate_content, stream_content
 from lad.models.db import Messages
 
 SYSTEM_PROMPT = """You are a helpful AI assistant.
@@ -99,13 +99,15 @@ def build_llm_context(*, summary: str | None, messages: Sequence[Messages]) -> s
     return "\n\n".join(sections)
 
 
-def generate_response(*, summary: str | None, messages: Sequence[Messages]) -> str:
+def generate_response_stream(
+    *, summary: str | None, messages: Sequence[Messages]
+) -> Iterator[str]:
     context = build_llm_context(
         summary=summary,
         messages=messages,
     )
 
-    return generate_content(
+    yield from stream_content(
         contents=context,
         system_instruction=SYSTEM_PROMPT,
     )

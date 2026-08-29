@@ -1,48 +1,26 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef } from "react";
 
-import { getChatMessages } from "../../services/chat";
-import type { ChatMessage } from "../../types/chat";
-import { ChatMessage as ChatMessageComponent } from "./ChatMessage";
+import type { ChatMessage as ChatMessageType } from "../../types/chat";
+import { ChatMessage } from "./ChatMessage";
 
 interface ChatWindowProps {
-  chatId: number;
-  refreshKey: number;
+  messages: ChatMessageType[];
+  loading: boolean;
+  streamingText: string;
+  isStreaming: boolean;
 }
 
-export function ChatWindow({ chatId, refreshKey }: ChatWindowProps) {
-  const [messages, setMessages] = useState<ChatMessage[]>([]);
-  const [loading, setLoading] = useState(true);
+export function ChatWindow({
+  messages,
+  loading,
+  streamingText,
+  isStreaming,
+}: ChatWindowProps) {
   const bottomRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    let cancelled = false;
-
-    async function loadMessages() {
-      setLoading(true);
-
-      try {
-        const result = await getChatMessages(chatId);
-
-        if (!cancelled) {
-          setMessages(result);
-        }
-      } finally {
-        if (!cancelled) {
-          setLoading(false);
-        }
-      }
-    }
-
-    loadMessages();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [chatId, refreshKey]);
-
-  useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages]);
+  }, [messages, streamingText]);
 
   return (
     <div className="h-full min-h-0 overflow-y-auto px-8 py-8">
@@ -51,8 +29,21 @@ export function ChatWindow({ chatId, refreshKey }: ChatWindowProps) {
           <p className="font-mono text-xs text-text-dim">loading_messages...</p>
         ) : (
           messages.map((message) => (
-            <ChatMessageComponent key={message.id} message={message} />
+            <ChatMessage key={message.id} message={message} />
           ))
+        )}
+
+        {isStreaming && (
+          <ChatMessage
+            pending
+            message={{
+              id: -1,
+              chat_id: 0,
+              role: "assistant",
+              content: streamingText,
+              created_at: new Date().toISOString(),
+            }}
+          />
         )}
 
         <div ref={bottomRef} />

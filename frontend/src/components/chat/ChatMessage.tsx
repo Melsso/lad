@@ -9,6 +9,7 @@ import type { ChatMessage as ChatMessageType } from "../../types/chat";
 
 interface ChatMessageProps {
   message: ChatMessageType;
+  pending?: boolean;
 }
 
 const markdownComponents: Components = {
@@ -98,7 +99,7 @@ const markdownComponents: Components = {
   ),
 };
 
-export function ChatMessage({ message }: ChatMessageProps) {
+export function ChatMessage({ message, pending }: ChatMessageProps) {
   const isUser = message.role === "user";
 
   return (
@@ -116,13 +117,25 @@ export function ChatMessage({ message }: ChatMessageProps) {
             : "border-l-2 border-cyan/40 bg-panel-alt/60 text-text-primary"
         }`}
       >
-        <ReactMarkdown
-          remarkPlugins={[remarkGfm, remarkMath, remarkBreaks]}
-          rehypePlugins={[rehypeKatex]}
-          components={markdownComponents}
-        >
-          {message.content}
-        </ReactMarkdown>
+        {pending && !message.content ? (
+          <span className="inline-flex h-4 items-center">
+            <span className="h-2 w-2 animate-pulse-glow rounded-full bg-amber shadow-[0_0_10px_var(--color-amber)]" />
+          </span>
+        ) : (
+          <>
+            <ReactMarkdown
+              remarkPlugins={[remarkGfm, remarkMath, remarkBreaks]}
+              rehypePlugins={[rehypeKatex]}
+              components={markdownComponents}
+            >
+              {message.content}
+            </ReactMarkdown>
+
+            {pending && (
+              <span className="ml-0.5 inline-block h-3.5 w-1.5 translate-y-0.5 animate-blink bg-amber" />
+            )}
+          </>
+        )}
       </div>
     </article>
   );

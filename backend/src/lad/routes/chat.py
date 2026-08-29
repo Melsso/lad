@@ -2,14 +2,16 @@ import logging
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi.responses import StreamingResponse
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
 from lad.core.db import get_db
 from lad.helpers.chat import (
     create_chat,
+    get_chat,
     get_chat_messages,
-    process_chat_msg,
+    stream_chat_msg,
     update_chat_title,
 )
 from lad.schemas.chat import (
@@ -146,38 +148,14 @@ async def chat_messages(
         ) from exc
 
 
-@chat_router.post("/msg", response_model=ChatMessageResponse)
-async def process_msg(
+@chat_router.post("/msg/stream")
+async def stream_msg(
     request: Request,
     db: Annotated[Session, Depends(get_db)],
     chat_request: SendMessageRequest,
 ):
     try:
-        return process_chat_msg(
-            db=db, chat_id=chat_request.chat_id, msg=chat_request.msg
-        )
-
-    except ValueError as exc:
-        logger.exception(
-            "lad_event",
-            extra={
-                "event": "http_request",
-                "status": "client_error",
-                "status_code": 404,
-                "path": request.url.path,
-                "method": request.method,
-                "context": {
-                    "location": "process_msg",
-                    "error_type": type(exc).__name__,
-                    "error_message": str(exc),
-                },
-            },
-        )
-        raise HTTPException(
-            status_code=404,
-            detail=str(exc),
-        ) from exc
-
+        chat = get_chat(db=db, chat_id=chat_request.chat_id)
     except SQLAlchemyError as exc:
         logger.exception(
             "lad_event",
@@ -188,7 +166,7 @@ async def process_msg(
                 "path": request.url.path,
                 "method": request.method,
                 "context": {
-                    "location": "process_msg",
+                    "location": "stream_msg",
                     "error_type": type(exc).__name__,
                     "error_message": str(exc),
                 },
@@ -199,26 +177,17 @@ async def process_msg(
             detail="Database error while processing message",
         ) from exc
 
-    except Exception as exc:
-        db.rollback()
-
-        logger.exception(
-            "lad_event",
-            extra={
-                "event": "http_request",
-                "status": "internal_error",
-                "status_code": 500,
-                "path": request.url.path,
-                "method": request.method,
-                "context": {
-                    "location": "process_msg",
-                    "error_type": type(exc).__name__,
-                    "error_message": str(exc),
-                },
-            },
+    if chat is None:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Chat {chat_request.chat_id} does not exist",
         )
 
-        raise HTTPException(
-            status_code=500,
-            detail="Internal server error while processing message",
-        ) from exc
+    return StreamingResponse(
+        stream_chat_msg(chat_id=chat_request.chat_id, msg=chat_request.msg),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "X-Accel-Buffering": "no",
+        },
+    )
