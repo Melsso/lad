@@ -2,16 +2,25 @@ import { Link } from "react-router-dom";
 
 export function TranscriptionList() {
   return (
-    <section className="transcription-list">
-      <div className="sidebar-section-header">
-        <h2>Transcriptions</h2>
+    <section>
+      <div className="mb-3 flex items-center justify-between">
+        <h2 className="font-mono text-xs tracking-[0.2em] text-text-dim uppercase">
+          Transcriptions
+        </h2>
 
-        <button type="button">+</button>
+        <span className="flex h-6 w-6 items-center justify-center rounded border border-line text-text-dim">
+          +
+        </span>
       </div>
 
-      <p>No transcriptions yet.</p>
+      <p className="font-mono text-xs text-text-dim">no transcriptions yet.</p>
 
-      <Link to="/transcriptions">View all</Link>
+      <Link
+        to="/transcriptions"
+        className="mt-1 inline-block font-mono text-xs text-cyan hover:underline"
+      >
+        view all
+      </Link>
     </section>
   );
 }

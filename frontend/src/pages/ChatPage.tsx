@@ -12,11 +12,18 @@ export function ChatPage() {
 
   return (
     <AppLayout>
-      <div
-        className={`chat-page ${selectedChatId === null ? "chat-page-empty" : ""}`}
-      >
-        {selectedChatId !== null && (
+      <div className="flex h-full min-h-0 flex-col">
+        {selectedChatId !== null ? (
           <ChatWindow chatId={selectedChatId} refreshKey={refreshKey} />
+        ) : (
+          <div className="flex flex-1 flex-col items-center justify-center gap-2 px-8 text-center">
+            <h2 className="font-display text-2xl font-semibold tracking-wide text-text-primary">
+              LAD is listening<span className="text-magenta">.</span>
+            </h2>
+            <p className="max-w-sm font-mono text-xs text-text-dim">
+              start a new conversation below to boot up a session.
+            </p>
+          </div>
         )}
 
         <MessageInput

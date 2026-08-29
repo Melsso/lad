@@ -8,7 +8,7 @@ docker compose down
 
 echo "Stopping Postgres..."
 
-docker stop local_db || true
+docker stop local_lad_db || true
 
 echo ""
 echo "Cleanup complete."

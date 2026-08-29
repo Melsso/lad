@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 
 import { getChats } from "../services/chat";
 import type { Chat } from "../types/chat";
@@ -7,6 +7,8 @@ interface UseChatsResult {
   chats: Chat[];
   loading: boolean;
   error: Error | null;
+  refetch: () => Promise<void>;
+  updateLocalChat: (chatId: number, patch: Partial<Chat>) => void;
 }
 
 export function useChats(): UseChatsResult {
@@ -14,10 +16,22 @@ export function useChats(): UseChatsResult {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<Error | null>(null);
 
+  const loadChats = useCallback(async () => {
+    try {
+      const result = await getChats();
+      setChats(result);
+      setError(null);
+    } catch (err) {
+      setError(err instanceof Error ? err : new Error("Failed to load chats"));
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
   useEffect(() => {
     let cancelled = false;
 
-    async function loadChats() {
+    async function initialLoad() {
       try {
         const result = await getChats();
 
@@ -37,16 +51,29 @@ export function useChats(): UseChatsResult {
       }
     }
 
-    loadChats();
+    initialLoad();
 
     return () => {
       cancelled = true;
     };
   }, []);
 
+  const updateLocalChat = useCallback(
+    (chatId: number, patch: Partial<Chat>) => {
+      setChats((current) =>
+        current.map((chat) =>
+          chat.id === chatId ? { ...chat, ...patch } : chat,
+        ),
+      );
+    },
+    [],
+  );
+
   return {
     chats,
     loading,
     error,
+    refetch: loadChats,
+    updateLocalChat,
   };
 }
