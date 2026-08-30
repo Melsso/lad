@@ -4,14 +4,9 @@ import type { FormEvent } from "react";
 interface MessageInputProps {
   onSend: (content: string) => void;
   isStreaming: boolean;
-  error: string | null;
 }
 
-export function MessageInput({
-  onSend,
-  isStreaming,
-  error,
-}: MessageInputProps) {
+export function MessageInput({ onSend, isStreaming }: MessageInputProps) {
   const [message, setMessage] = useState("");
 
   function handleSubmit(event: FormEvent<HTMLFormElement>) {
@@ -28,8 +23,6 @@ export function MessageInput({
 
   return (
     <div className="mx-auto w-full max-w-3xl px-8 pb-6">
-      {error && <p className="mb-2 font-mono text-xs text-magenta">{error}</p>}
-
       <form
         onSubmit={handleSubmit}
         className={`flex items-center gap-2 rounded-lg border bg-panel-alt px-3 py-2 transition-colors ${

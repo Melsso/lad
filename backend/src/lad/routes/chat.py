@@ -9,15 +9,18 @@ from sqlalchemy.orm import Session
 from lad.core.db import get_db
 from lad.helpers.chat import (
     create_chat,
+    delete_chat,
     get_chat,
     get_chat_messages,
     stream_chat_msg,
+    stream_chat_retry,
     update_chat_title,
 )
 from lad.schemas.chat import (
     ChatMessageResponse,
     ChatResponse,
     CreateChatRequest,
+    RetryMessageRequest,
     SendMessageRequest,
     UpdateChatTitleRequest,
 )
@@ -120,6 +123,46 @@ async def update_chat(
         ) from exc
 
 
+@chat_router.delete("/{chat_id}")
+async def delete_chat_endpoint(
+    request: Request,
+    chat_id: int,
+    db: Annotated[Session, Depends(get_db)],
+):
+    try:
+        deleted = delete_chat(db=db, chat_id=chat_id)
+        db.commit()
+    except SQLAlchemyError as exc:
+        db.rollback()
+        logger.exception(
+            "lad_event",
+            extra={
+                "event": "http_request",
+                "status": "internal_error",
+                "status_code": 500,
+                "path": request.url.path,
+                "method": request.method,
+                "context": {
+                    "location": "delete_chat_endpoint",
+                    "error_type": type(exc).__name__,
+                    "error_message": str(exc),
+                },
+            },
+        )
+        raise HTTPException(
+            status_code=500,
+            detail="Failed to delete chat",
+        ) from exc
+
+    if not deleted:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Chat {chat_id} does not exist",
+        )
+
+    return {"status": "deleted"}
+
+
 @chat_router.get("/messages", response_model=list[ChatMessageResponse])
 async def chat_messages(
     request: Request, db: Annotated[Session, Depends(get_db)], chat_id: int
@@ -185,6 +228,51 @@ async def stream_msg(
 
     return StreamingResponse(
         stream_chat_msg(chat_id=chat_request.chat_id, msg=chat_request.msg),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "X-Accel-Buffering": "no",
+        },
+    )
+
+
+@chat_router.post("/msg/retry")
+async def retry_msg(
+    request: Request,
+    db: Annotated[Session, Depends(get_db)],
+    retry_request: RetryMessageRequest,
+):
+    try:
+        chat = get_chat(db=db, chat_id=retry_request.chat_id)
+    except SQLAlchemyError as exc:
+        logger.exception(
+            "lad_event",
+            extra={
+                "event": "http_request",
+                "status": "internal_error",
+                "status_code": 500,
+                "path": request.url.path,
+                "method": request.method,
+                "context": {
+                    "location": "retry_msg",
+                    "error_type": type(exc).__name__,
+                    "error_message": str(exc),
+                },
+            },
+        )
+        raise HTTPException(
+            status_code=500,
+            detail="Database error while processing message",
+        ) from exc
+
+    if chat is None:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Chat {retry_request.chat_id} does not exist",
+        )
+
+    return StreamingResponse(
+        stream_chat_retry(chat_id=retry_request.chat_id),
         media_type="text/event-stream",
         headers={
             "Cache-Control": "no-cache",

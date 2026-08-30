@@ -35,3 +35,7 @@ class CreateChatRequest(BaseModel):
 class UpdateChatTitleRequest(BaseModel):
     chat_id: int
     title: str
+
+
+class RetryMessageRequest(BaseModel):
+    chat_id: int

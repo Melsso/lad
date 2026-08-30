@@ -18,11 +18,21 @@ export function ChatPage() {
     [navigate],
   );
 
-  const { messages, loading, streamingText, isStreaming, error, sendMessage } =
-    useChatStream(selectedChatId, handleChatCreated);
+  const {
+    messages,
+    loading,
+    streamingText,
+    isStreaming,
+    error,
+    sendMessage,
+    retry,
+  } = useChatStream(selectedChatId, handleChatCreated);
 
   const hasContent =
-    selectedChatId !== null || messages.length > 0 || isStreaming;
+    selectedChatId !== null ||
+    messages.length > 0 ||
+    isStreaming ||
+    error !== null;
 
   return (
     <AppLayout>
@@ -33,6 +43,8 @@ export function ChatPage() {
             loading={loading}
             streamingText={streamingText}
             isStreaming={isStreaming}
+            error={error}
+            onRetry={retry}
           />
         ) : (
           <div className="flex flex-1 flex-col items-center justify-center gap-2 px-8 text-center">
@@ -45,11 +57,7 @@ export function ChatPage() {
           </div>
         )}
 
-        <MessageInput
-          onSend={sendMessage}
-          isStreaming={isStreaming}
-          error={error}
-        />
+        <MessageInput onSend={sendMessage} isStreaming={isStreaming} />
       </div>
     </AppLayout>
   );

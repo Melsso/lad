@@ -9,6 +9,7 @@ interface UseChatsResult {
   error: Error | null;
   refetch: () => Promise<void>;
   updateLocalChat: (chatId: number, patch: Partial<Chat>) => void;
+  removeLocalChat: (chatId: number) => void;
 }
 
 export function useChats(): UseChatsResult {
@@ -69,11 +70,16 @@ export function useChats(): UseChatsResult {
     [],
   );
 
+  const removeLocalChat = useCallback((chatId: number) => {
+    setChats((current) => current.filter((chat) => chat.id !== chatId));
+  }, []);
+
   return {
     chats,
     loading,
     error,
     refetch: loadChats,
     updateLocalChat,
+    removeLocalChat,
   };
 }

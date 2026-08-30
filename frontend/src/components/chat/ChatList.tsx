@@ -1,24 +1,31 @@
 import { useState } from "react";
-import { Link, useParams } from "react-router-dom";
+import { Link, useNavigate, useParams } from "react-router-dom";
 
-import { updateChatTitle } from "../../services/chat";
+import { deleteChat, updateChatTitle } from "../../services/chat";
 import { useChats } from "../../hooks/useChats";
 
 export function ChatList() {
   const { chatId } = useParams();
+  const navigate = useNavigate();
   const activeChatId = chatId ? Number(chatId) : null;
 
-  const { chats, loading, error, updateLocalChat } = useChats();
+  const { chats, loading, error, updateLocalChat, removeLocalChat } =
+    useChats();
 
   const [editingChatId, setEditingChatId] = useState<number | null>(null);
   const [editTitle, setEditTitle] = useState("");
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState(false);
 
+  const [deletingChatId, setDeletingChatId] = useState<number | null>(null);
+  const [deleting, setDeleting] = useState(false);
+  const [deleteError, setDeleteError] = useState(false);
+
   function startEditing(id: number, title: string) {
     setEditingChatId(id);
     setEditTitle(title);
     setSaveError(false);
+    setDeletingChatId(null);
   }
 
   function cancelEditing() {
@@ -46,6 +53,40 @@ export function ChatList() {
       setSaveError(true);
     } finally {
       setSaving(false);
+    }
+  }
+
+  function startDeleting(id: number) {
+    setDeletingChatId(id);
+    setDeleteError(false);
+    setEditingChatId(null);
+  }
+
+  function cancelDeleting() {
+    setDeletingChatId(null);
+    setDeleteError(false);
+  }
+
+  async function confirmDelete(id: number) {
+    if (deleting) {
+      return;
+    }
+
+    setDeleting(true);
+    setDeleteError(false);
+
+    try {
+      await deleteChat(id);
+      removeLocalChat(id);
+      setDeletingChatId(null);
+
+      if (activeChatId === id) {
+        navigate("/chat");
+      }
+    } catch {
+      setDeleteError(true);
+    } finally {
+      setDeleting(false);
     }
   }
 
@@ -82,6 +123,7 @@ export function ChatList() {
           {chats.map((chat) => {
             const isActive = chat.id === activeChatId;
             const isEditing = editingChatId === chat.id;
+            const isDeleting = deletingChatId === chat.id;
 
             return (
               <li key={chat.id} className="group relative">
@@ -131,6 +173,30 @@ export function ChatList() {
                       ×
                     </button>
                   </div>
+                ) : isDeleting ? (
+                  <div className="flex items-center gap-1 py-1 pl-3">
+                    <span className="min-w-0 flex-1 truncate font-mono text-xs text-magenta">
+                      delete this chat?
+                    </span>
+
+                    <button
+                      type="button"
+                      onClick={() => void confirmDelete(chat.id)}
+                      disabled={deleting}
+                      className="rounded px-1.5 py-1 font-mono text-xs text-magenta transition hover:bg-magenta/10 disabled:opacity-40"
+                    >
+                      {deleting ? "..." : "yes"}
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={cancelDeleting}
+                      disabled={deleting}
+                      className="rounded px-1.5 py-1 text-xs text-text-muted transition hover:bg-line disabled:opacity-40"
+                    >
+                      ×
+                    </button>
+                  </div>
                 ) : (
                   <div className="flex items-center gap-1 pl-3">
                     <Link
@@ -152,12 +218,27 @@ export function ChatList() {
                     >
                       ✎
                     </button>
+
+                    <button
+                      type="button"
+                      onClick={() => startDeleting(chat.id)}
+                      aria-label={`Delete ${chat.title}`}
+                      className="shrink-0 rounded px-1.5 py-1 text-xs text-text-dim opacity-0 transition group-hover:opacity-100 hover:text-magenta"
+                    >
+                      🗑
+                    </button>
                   </div>
                 )}
 
                 {isEditing && saveError && (
                   <p className="pl-3 font-mono text-[10px] text-magenta">
                     rename failed — try again.
+                  </p>
+                )}
+
+                {isDeleting && deleteError && (
+                  <p className="pl-3 font-mono text-[10px] text-magenta">
+                    delete failed — try again.
                   </p>
                 )}
               </li>

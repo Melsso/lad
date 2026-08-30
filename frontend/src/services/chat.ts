@@ -35,6 +35,12 @@ export function updateChatTitle(chatId: number, title: string): Promise<Chat> {
   });
 }
 
+export function deleteChat(chatId: number): Promise<void> {
+  return api<void>(`/chat/${chatId}`, {
+    method: "DELETE",
+  });
+}
+
 function processEvent(rawEvent: string, handlers: StreamMessageHandlers) {
   const lines = rawEvent.split("\n");
   let eventType = "message";
@@ -63,19 +69,20 @@ function processEvent(rawEvent: string, handlers: StreamMessageHandlers) {
   }
 }
 
-export async function streamMessage(
-  request: SendMessageRequest,
+async function consumeSseStream(
+  url: string,
+  body: unknown,
   handlers: StreamMessageHandlers,
 ): Promise<void> {
   let response: Response;
 
   try {
-    response = await fetch(`${API_BASE_URL}/chat/msg/stream`, {
+    response = await fetch(url, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
       },
-      body: JSON.stringify(request),
+      body: JSON.stringify(body),
       signal: handlers.signal,
     });
   } catch (err) {
@@ -101,6 +108,12 @@ export async function streamMessage(
       const { value, done } = await reader.read();
 
       if (done) {
+        buffer += decoder.decode();
+
+        if (buffer.trim()) {
+          processEvent(buffer, handlers);
+        }
+
         break;
       }
 
@@ -120,4 +133,22 @@ export async function streamMessage(
 
     handlers.onError("Connection lost while receiving the response.");
   }
+}
+
+export function streamMessage(
+  request: SendMessageRequest,
+  handlers: StreamMessageHandlers,
+): Promise<void> {
+  return consumeSseStream(`${API_BASE_URL}/chat/msg/stream`, request, handlers);
+}
+
+export function retryMessage(
+  chatId: number,
+  handlers: StreamMessageHandlers,
+): Promise<void> {
+  return consumeSseStream(
+    `${API_BASE_URL}/chat/msg/retry`,
+    { chat_id: chatId },
+    handlers,
+  );
 }
