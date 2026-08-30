@@ -10,6 +10,7 @@ from lad.core.db import get_db
 from lad.helpers.chat import (
     create_chat,
     delete_chat,
+    generate_temporary_chat_title,
     get_chat,
     get_chat_messages,
     stream_chat_msg,
@@ -36,9 +37,11 @@ async def create_chat_endpoint(
     chat_request: CreateChatRequest,
 ):
     try:
-        title = chat_request.title.strip() if chat_request.title else "New Chat"
-        if not title:
-            title = "New Chat"
+        title = (
+            generate_temporary_chat_title(chat_request.title)
+            if chat_request.title
+            else "New Chat"
+        )
 
         chat = create_chat(db=db, title=title)
 

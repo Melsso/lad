@@ -46,8 +46,8 @@ jobs:
       - name: Cache Poetry venv
         uses: actions/cache@v4
         with:
-          path: backend/.venv
-          key: poetry-${{ runner.os }}-${{ hashFiles('backend/poetry.lock') }}
+          path: .venv
+          key: poetry-${{ runner.os }}-${{ hashFiles('poetry.lock') }}
           restore-keys: |
             poetry-${{ runner.os }}-
 
@@ -60,8 +60,8 @@ jobs:
       - name: Type check with mypy
         run: poetry run mypy .
 
-      # - name: Run unit tests
-      #   run: poetry run pytest tests
+      - name: Run unit tests
+        run: poetry run pytest tests/unit_tests --cov=lad --cov-report=term-missing
 
       # - name: Run integration tests
-      #   run: poetry run pytest intragration_tests ?
+      #   run: poetry run pytest tests/integration_tests

@@ -4,9 +4,12 @@ __pycache__/
 
 .ruff_cache/
 .mypy_cache/
+.pytest_cache/
+.coverage
 
 node_modules/
 dist/
+coverage/
 
 .idea/
 .vscode/
