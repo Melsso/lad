@@ -86,21 +86,19 @@ describe("streamMessage / retryMessage (SSE consumption)", () => {
   it("delivers chunk events to onChunk in order", async () => {
     vi.stubGlobal(
       "fetch",
-      vi
-        .fn()
-        .mockResolvedValue(
-          createSseResponse([
-            sseEvent("chunk", { text: "Hel" }),
-            sseEvent("chunk", { text: "lo" }),
-            sseEvent("done", {
-              id: 1,
-              chat_id: 1,
-              role: "assistant",
-              content: "Hello",
-              created_at: "2026-01-01T00:00:00Z",
-            }),
-          ]),
-        ),
+      vi.fn().mockResolvedValue(
+        createSseResponse([
+          sseEvent("chunk", { text: "Hel" }),
+          sseEvent("chunk", { text: "lo" }),
+          sseEvent("done", {
+            id: 1,
+            chat_id: 1,
+            role: "assistant",
+            content: "Hello",
+            created_at: "2026-01-01T00:00:00Z",
+          }),
+        ]),
+      ),
     );
 
     const chunks: string[] = [];

@@ -26,6 +26,9 @@ jobs:
       DB_NAME: ci
       DB_HOST: localhost
       DB_PORT: "5432"
+      GEMINI_API_KEY: ci
+      GEMINI_MODEL: ci
+
 
     steps:
       - name: Checkout
@@ -43,7 +46,7 @@ jobs:
           virtualenvs-create: true
           virtualenvs-in-project: true
 
-      - name: Cache Poetry venv
+      - name: Cache Poetry
         uses: actions/cache@v4
         with:
           path: .venv
@@ -51,17 +54,17 @@ jobs:
           restore-keys: |
             poetry-${{ runner.os }}-
 
-      - name: Install dependencies
+      - name: Install Dependencies
         run: poetry install --no-interaction
 
-      - name: Lint with ruff
+      - name: Lint
         run: poetry run ruff check .
 
-      - name: Type check with mypy
+      - name: Type Check
         run: poetry run mypy .
 
-      - name: Run unit tests
+      - name: Unit Tests
         run: poetry run pytest tests/unit_tests --cov=lad --cov-report=term-missing
-
-      # - name: Run integration tests
-      #   run: poetry run pytest tests/integration_tests
+      
+      - name: Integration Tests
+        run: poetry run pytest tests/integration_tests --cov=lad --cov-report=term-missing
