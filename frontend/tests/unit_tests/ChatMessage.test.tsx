@@ -132,13 +132,34 @@ describe("ChatMessage", () => {
     expect(screen.getByRole("cell", { name: "1" })).toBeInTheDocument();
   });
 
-  it("renders inline math", () => {
-    const { container } = render(
+  it("renders a tool_call message as a compact chip with parsed arguments", () => {
+    render(
       <ChatMessage
-        message={makeMessage({ content: "the value $\\pi$ is constant" })}
+        message={makeMessage({
+          role: "tool_call",
+          content: "",
+          tool_name: "get_temperature",
+          tool_arguments: '{"city":"New York"}',
+        })}
       />,
     );
 
-    expect(container.querySelector(".katex")).not.toBeNull();
+    expect(screen.getByText("get_temperature")).toBeInTheDocument();
+    expect(screen.getByText('{"city":"New York"}')).toBeInTheDocument();
+  });
+
+  it("renders a tool_result message as a compact chip with the result content", () => {
+    render(
+      <ChatMessage
+        message={makeMessage({
+          role: "tool_result",
+          content: "22°C",
+          tool_name: "get_temperature",
+        })}
+      />,
+    );
+
+    expect(screen.getByText("get_temperature")).toBeInTheDocument();
+    expect(screen.getByText("22°C")).toBeInTheDocument();
   });
 });

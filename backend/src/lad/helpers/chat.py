@@ -1,3 +1,4 @@
+import json
 import logging
 from collections.abc import Iterator
 
@@ -100,17 +101,62 @@ def get_messages_after_summary(
     return query.order_by(Messages.created_at).all()
 
 
-def create_message(db: Session, chat_id: int, role: str, content: str) -> Messages:
+def create_message(
+    db: Session,
+    chat_id: int,
+    role: str,
+    content: str,
+    *,
+    tool_call_id: str | None = None,
+    tool_name: str | None = None,
+    tool_arguments: str | None = None,
+) -> Messages:
     message = Messages(
         chat_id=chat_id,
         role=role,
         content=content,
+        tool_call_id=tool_call_id,
+        tool_name=tool_name,
+        tool_arguments=tool_arguments,
     )
 
     db.add(message)
     db.flush()
 
     return message
+
+
+def create_tool_call_message(
+    db: Session, chat_id: int, call_id: str, tool_name: str, arguments: dict
+) -> Messages:
+    return create_message(
+        db=db,
+        chat_id=chat_id,
+        role="tool_call",
+        content="",
+        tool_call_id=call_id,
+        tool_name=tool_name,
+        tool_arguments=json.dumps(arguments),
+    )
+
+
+def create_tool_result_message(
+    db: Session, chat_id: int, call_id: str, tool_name: str, content: str
+) -> Messages:
+    return create_message(
+        db=db,
+        chat_id=chat_id,
+        role="tool_result",
+        content=content,
+        tool_call_id=call_id,
+        tool_name=tool_name,
+    )
+
+
+def sse_event_for_message(event: str, message: Messages) -> str:
+    payload = ChatMessageResponse.model_validate(message).model_dump(mode="json")
+
+    return format_sse_event(event, payload)
 
 
 def save_chat_summary(
@@ -181,11 +227,7 @@ def _stream_and_persist_reply(db: Session, chat_id: int) -> Iterator[str]:
     )
     db.commit()
 
-    payload = ChatMessageResponse.model_validate(assistant_message).model_dump(
-        mode="json"
-    )
-
-    yield format_sse_event("done", payload)
+    yield sse_event_for_message("done", assistant_message)
 
 
 def stream_chat_msg(chat_id: int, msg: str) -> Iterator[str]:

@@ -127,6 +127,67 @@ describe("useChatStream", () => {
     expect(result.current.streamingText).toBe("");
   });
 
+  it("appends tool_call and tool_result messages as they arrive mid-stream", async () => {
+    mockedGetChatMessages.mockResolvedValue([]);
+    const streamer = controllableStreamer();
+    mockedStreamMessage.mockImplementation(streamer.fn);
+
+    const { result } = renderHook(() => useChatStream(1, vi.fn()));
+
+    await waitFor(() => expect(result.current.loading).toBe(false));
+
+    act(() => {
+      result.current.sendMessage("weather in NY?");
+    });
+
+    await waitFor(() => expect(result.current.isStreaming).toBe(true));
+
+    act(() => {
+      streamer.getHandlers()?.onToolCall?.(
+        makeMessage({
+          id: 2,
+          role: "tool_call",
+          content: "",
+          tool_call_id: "call_0",
+          tool_name: "get_temperature",
+          tool_arguments: '{"city": "New York"}',
+        }),
+      );
+    });
+
+    expect(result.current.messages).toHaveLength(2);
+
+    act(() => {
+      streamer.getHandlers()?.onToolResult?.(
+        makeMessage({
+          id: 3,
+          role: "tool_result",
+          content: "22°C",
+          tool_call_id: "call_0",
+          tool_name: "get_temperature",
+        }),
+      );
+    });
+
+    expect(result.current.messages).toHaveLength(3);
+    expect(result.current.messages[2]).toMatchObject({
+      role: "tool_result",
+      content: "22°C",
+    });
+
+    act(() => {
+      streamer
+        .getHandlers()
+        ?.onDone(
+          makeMessage({ id: 4, role: "assistant", content: "It's 22°C." }),
+        );
+      streamer.finish();
+    });
+
+    await waitFor(() => expect(result.current.isStreaming).toBe(false));
+    expect(result.current.messages).toHaveLength(4);
+  });
+
   it("sendMessage on a new chat creates the chat before streaming and defers onChatCreated until done", async () => {
     mockedCreateChat.mockResolvedValue(makeChat({ id: 99 }));
     const streamer = controllableStreamer();

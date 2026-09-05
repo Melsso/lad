@@ -188,6 +188,59 @@ describe("streamMessage / retryMessage (SSE consumption)", () => {
     expect(onChunk).toHaveBeenCalledWith("no trailing newline");
   });
 
+  it("delivers tool_call and tool_result events to their handlers", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(
+        createSseResponse([
+          sseEvent(
+            "tool_call",
+            makeMessage({
+              id: 2,
+              role: "tool_call",
+              content: "",
+              tool_call_id: "call_0",
+              tool_name: "get_temperature",
+              tool_arguments: '{"city": "New York"}',
+            }),
+          ),
+          sseEvent(
+            "tool_result",
+            makeMessage({
+              id: 3,
+              role: "tool_result",
+              content: "22°C",
+              tool_call_id: "call_0",
+              tool_name: "get_temperature",
+            }),
+          ),
+          sseEvent("done", makeMessage({ id: 4, content: "It's 22°C in NY." })),
+        ]),
+      ),
+    );
+
+    const onToolCall = vi.fn();
+    const onToolResult = vi.fn();
+
+    await streamMessage(
+      { chat_id: 1, msg: "weather in NY?" },
+      {
+        onChunk: vi.fn(),
+        onToolCall,
+        onToolResult,
+        onDone: vi.fn(),
+        onError: vi.fn(),
+      },
+    );
+
+    expect(onToolCall).toHaveBeenCalledWith(
+      expect.objectContaining({ id: 2, tool_name: "get_temperature" }),
+    );
+    expect(onToolResult).toHaveBeenCalledWith(
+      expect.objectContaining({ id: 3, content: "22°C" }),
+    );
+  });
+
   it("calls onError when fetch itself rejects", async () => {
     vi.stubGlobal(
       "fetch",

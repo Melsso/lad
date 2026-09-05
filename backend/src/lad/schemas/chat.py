@@ -18,6 +18,10 @@ class ChatMessageResponse(BaseModel):
     content: str
     role: str
 
+    tool_call_id: str | None = None
+    tool_name: str | None = None
+    tool_arguments: str | None = None
+
     created_at: datetime
 
     model_config = ConfigDict(from_attributes=True)

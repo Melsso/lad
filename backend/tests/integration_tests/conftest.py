@@ -9,8 +9,6 @@ os.environ.setdefault("DB_USER", "test")
 os.environ.setdefault("DB_PASSWORD", "test")
 os.environ.setdefault("DB_NAME", "test")
 os.environ.setdefault("DB_HOST", "localhost")
-os.environ.setdefault("GEMINI_API_KEY", "test-key")
-os.environ.setdefault("GEMINI_MODEL", "test-model")
 
 warnings.filterwarnings("ignore", category=DeprecationWarning, module="testcontainers")
 

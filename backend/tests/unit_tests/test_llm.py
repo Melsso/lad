@@ -5,6 +5,7 @@ import pytest
 
 from lad.core import llm as core_llm
 from lad.helpers import llm as helpers_llm
+from lad.schemas.llm import ToolDefinition
 
 
 def _mock_post_response(monkeypatch, *, json_body):
@@ -92,7 +93,139 @@ def test_stream_content_skips_empty_chunks(monkeypatch):
     assert result == ["ok"]
 
 
-def test_stream_content_propagates_upstream_errors(monkeypatch):
+def test_generate_turn_returns_plain_text_with_no_tool_calls(monkeypatch):
+    _mock_post_response(monkeypatch, json_body={"message": {"content": "  hi there  "}})
+
+    turn = core_llm.generate_turn(messages=[{"role": "user", "content": "hi"}])
+
+    assert turn.content == "hi there"
+    assert turn.tool_calls == []
+
+
+def test_generate_turn_does_not_send_tools_key_when_no_tools_given(monkeypatch):
+    mock_post = _mock_post_response(
+        monkeypatch, json_body={"message": {"content": "ok"}}
+    )
+
+    core_llm.generate_turn(messages=[{"role": "user", "content": "hi"}])
+
+    _, kwargs = mock_post.call_args
+    assert "tools" not in kwargs["json"]
+
+
+def test_generate_turn_sends_tools_in_openai_function_shape(monkeypatch):
+    mock_post = _mock_post_response(
+        monkeypatch, json_body={"message": {"content": "ok"}}
+    )
+
+    tool = ToolDefinition(
+        name="get_temperature",
+        description="Get the current temperature for a city",
+        parameters={
+            "type": "object",
+            "required": ["city"],
+            "properties": {"city": {"type": "string"}},
+        },
+    )
+
+    core_llm.generate_turn(
+        messages=[{"role": "user", "content": "weather in NY?"}], tools=[tool]
+    )
+
+    _, kwargs = mock_post.call_args
+    assert kwargs["json"]["tools"] == [
+        {
+            "type": "function",
+            "function": {
+                "name": "get_temperature",
+                "description": "Get the current temperature for a city",
+                "parameters": {
+                    "type": "object",
+                    "required": ["city"],
+                    "properties": {"city": {"type": "string"}},
+                },
+            },
+        }
+    ]
+
+
+def test_generate_turn_parses_tool_calls_with_dict_arguments(monkeypatch):
+    _mock_post_response(
+        monkeypatch,
+        json_body={
+            "message": {
+                "content": "",
+                "tool_calls": [
+                    {
+                        "function": {
+                            "name": "get_temperature",
+                            "arguments": {"city": "New York"},
+                        }
+                    }
+                ],
+            }
+        },
+    )
+
+    turn = core_llm.generate_turn(
+        messages=[{"role": "user", "content": "weather in NY?"}],
+        tools=[ToolDefinition(name="get_temperature", description="", parameters={})],
+    )
+
+    assert turn.content == ""
+    assert len(turn.tool_calls) == 1
+    assert turn.tool_calls[0].call_id == "call_0"
+    assert turn.tool_calls[0].name == "get_temperature"
+    assert turn.tool_calls[0].arguments == {"city": "New York"}
+
+
+def test_generate_turn_parses_tool_calls_with_stringified_arguments(monkeypatch):
+    _mock_post_response(
+        monkeypatch,
+        json_body={
+            "message": {
+                "content": "",
+                "tool_calls": [
+                    {
+                        "function": {
+                            "name": "get_temperature",
+                            "arguments": json.dumps({"city": "New York"}),
+                        }
+                    }
+                ],
+            }
+        },
+    )
+
+    turn = core_llm.generate_turn(
+        messages=[{"role": "user", "content": "weather in NY?"}],
+        tools=[ToolDefinition(name="get_temperature", description="", parameters={})],
+    )
+
+    assert turn.tool_calls[0].arguments == {"city": "New York"}
+
+
+def test_generate_turn_assigns_unique_call_ids_for_parallel_tool_calls(monkeypatch):
+    _mock_post_response(
+        monkeypatch,
+        json_body={
+            "message": {
+                "content": "",
+                "tool_calls": [
+                    {"function": {"name": "get_temperature", "arguments": {}}},
+                    {"function": {"name": "get_temperature", "arguments": {}}},
+                ],
+            }
+        },
+    )
+
+    turn = core_llm.generate_turn(
+        messages=[{"role": "user", "content": "weather?"}],
+        tools=[ToolDefinition(name="get_temperature", description="", parameters={})],
+    )
+
+    assert [call.call_id for call in turn.tool_calls] == ["call_0", "call_1"]
+
     def broken_lines():
         yield json.dumps({"message": {"content": "partial"}, "done": False})
         raise RuntimeError("503 UNAVAILABLE")

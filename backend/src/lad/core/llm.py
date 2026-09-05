@@ -1,9 +1,11 @@
 import json
 from collections.abc import Iterator
+from typing import Any
 
 import httpx
 
 from lad.schemas.config import conf
+from lad.schemas.llm import LLMTurn, ToolCall, ToolDefinition
 
 
 def _build_messages(
@@ -89,3 +91,66 @@ def stream_content(
 
             if chunk.get("done"):
                 break
+
+
+def _build_tools(tools: list[ToolDefinition]) -> list[dict[str, Any]]:
+    return [
+        {
+            "type": "function",
+            "function": {
+                "name": tool.name,
+                "description": tool.description,
+                "parameters": tool.parameters,
+            },
+        }
+        for tool in tools
+    ]
+
+
+def _parse_arguments(raw_arguments: dict[str, Any] | str) -> dict[str, Any]:
+    if isinstance(raw_arguments, str):
+        return json.loads(raw_arguments)
+
+    return raw_arguments
+
+
+def _parse_tool_calls(raw_tool_calls: list[dict[str, Any]]) -> list[ToolCall]:
+    return [
+        ToolCall(
+            call_id=f"call_{index}",
+            name=raw_call["function"]["name"],
+            arguments=_parse_arguments(raw_call["function"].get("arguments", {})),
+        )
+        for index, raw_call in enumerate(raw_tool_calls)
+    ]
+
+
+def generate_turn(
+    *,
+    messages: list[dict[str, Any]],
+    tools: list[ToolDefinition] | None = None,
+    temperature: float | None = None,
+) -> LLMTurn:
+    payload: dict[str, Any] = {
+        "model": conf.OLLAMA_MODEL,
+        "messages": messages,
+        "stream": False,
+        "options": _build_options(temperature=temperature),
+    }
+
+    if tools:
+        payload["tools"] = _build_tools(tools)
+
+    response = httpx.post(
+        f"{conf.OLLAMA_HOST}/api/chat",
+        json=payload,
+        timeout=conf.OLLAMA_TIMEOUT,
+    )
+    response.raise_for_status()
+
+    message = response.json().get("message", {})
+
+    return LLMTurn(
+        content=message.get("content", "").strip(),
+        tool_calls=_parse_tool_calls(message.get("tool_calls", [])),
+    )

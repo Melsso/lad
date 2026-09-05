@@ -26,8 +26,6 @@ jobs:
       DB_NAME: ci
       DB_HOST: localhost
       DB_PORT: "5432"
-      GEMINI_API_KEY: ci
-      GEMINI_MODEL: ci
 
 
     steps:

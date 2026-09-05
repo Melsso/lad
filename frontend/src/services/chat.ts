@@ -62,6 +62,10 @@ function processEvent(rawEvent: string, handlers: StreamMessageHandlers) {
 
   if (eventType === "chunk") {
     handlers.onChunk(parsed.text as string);
+  } else if (eventType === "tool_call") {
+    handlers.onToolCall?.(parsed as ChatMessage);
+  } else if (eventType === "tool_result") {
+    handlers.onToolResult?.(parsed as ChatMessage);
   } else if (eventType === "done") {
     handlers.onDone(parsed as ChatMessage);
   } else if (eventType === "error") {

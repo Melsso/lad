@@ -111,6 +111,16 @@ export function useChatStream(
                 setStreamingText((current) => current + text);
               }
             },
+            onToolCall: (message) => {
+              if (isStillActive()) {
+                setMessages((current) => [...current, message]);
+              }
+            },
+            onToolResult: (message) => {
+              if (isStillActive()) {
+                setMessages((current) => [...current, message]);
+              }
+            },
             onDone: (message) => {
               if (isStillActive()) {
                 setMessages((current) => [...current, message]);

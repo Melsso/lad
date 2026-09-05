@@ -102,6 +102,29 @@ const markdownComponents: Components = {
 export function ChatMessage({ message, pending }: ChatMessageProps) {
   const isUser = message.role === "user";
 
+  if (message.role === "tool_call" || message.role === "tool_result") {
+    const isCall = message.role === "tool_call";
+
+    let detail = "";
+    if (isCall && message.tool_arguments) {
+      try {
+        detail = JSON.stringify(JSON.parse(message.tool_arguments));
+      } catch {
+        detail = message.tool_arguments;
+      }
+    } else if (!isCall) {
+      detail = message.content;
+    }
+
+    return (
+      <div className="flex items-center gap-2 font-mono text-[11px] text-text-dim">
+        <span className="text-cyan">{isCall ? "→" : "←"}</span>
+        <span className="text-amber">{message.tool_name}</span>
+        {detail && <span className="truncate text-text-dim">{detail}</span>}
+      </div>
+    );
+  }
+
   return (
     <article
       className={`flex flex-col ${isUser ? "items-end" : "items-start"}`}
