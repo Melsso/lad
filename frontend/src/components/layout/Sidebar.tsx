@@ -1,7 +1,6 @@
 import { Link } from "react-router-dom";
 
 import { ChatList } from "../chat/ChatList";
-import { TranscriptionList } from "../transcription/TranscriptionList";
 
 export function Sidebar() {
   return (
@@ -23,10 +22,6 @@ export function Sidebar() {
 
       <div className="mb-8">
         <ChatList />
-      </div>
-
-      <div>
-        <TranscriptionList />
       </div>
     </aside>
   );

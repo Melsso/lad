@@ -33,6 +33,31 @@ else
   fi
 fi
 
+OLLAMA_PID_FILE=".ollama.pid"
+OLLAMA_MODEL="qwen3:8b"
+
+echo "Checking Ollama..."
+
+if curl -s -o /dev/null http://localhost:11434; then
+  echo "Ollama already running."
+else
+  echo "Starting Ollama..."
+  nohup ollama serve >/tmp/ollama.log 2>&1 &
+  echo $! >"$OLLAMA_PID_FILE"
+
+  for _ in $(seq 1 15); do
+    if curl -s -o /dev/null http://localhost:11434; then
+      break
+    fi
+    sleep 1
+  done
+fi
+
+if ! ollama list | grep -q "$OLLAMA_MODEL"; then
+  echo "Pulling $OLLAMA_MODEL..."
+  ollama pull "$OLLAMA_MODEL"
+fi
+
 echo "Starting app stack..."
 
 docker compose up --build -d

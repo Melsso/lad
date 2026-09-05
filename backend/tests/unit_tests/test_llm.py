@@ -1,4 +1,4 @@
-from types import SimpleNamespace
+import json
 from unittest.mock import MagicMock
 
 import pytest
@@ -7,11 +7,36 @@ from lad.core import llm as core_llm
 from lad.helpers import llm as helpers_llm
 
 
+def _mock_post_response(monkeypatch, *, json_body):
+    mock_response = MagicMock()
+    mock_response.raise_for_status.return_value = None
+    mock_response.json.return_value = json_body
+
+    mock_post = MagicMock(return_value=mock_response)
+    monkeypatch.setattr(core_llm.httpx, "post", mock_post)
+
+    return mock_post
+
+
+def _mock_stream_response(monkeypatch, *, lines):
+    mock_response = MagicMock()
+    mock_response.raise_for_status.return_value = None
+    mock_response.iter_lines.return_value = iter(lines)
+
+    mock_context = MagicMock()
+    mock_context.__enter__.return_value = mock_response
+    mock_context.__exit__.return_value = False
+
+    mock_stream = MagicMock(return_value=mock_context)
+    monkeypatch.setattr(core_llm.httpx, "stream", mock_stream)
+
+    return mock_stream
+
+
 def test_generate_content_returns_stripped_text(monkeypatch):
-    mock_response = SimpleNamespace(text="  hello world  ")
-    mock_client = MagicMock()
-    mock_client.models.generate_content.return_value = mock_response
-    monkeypatch.setattr(core_llm, "client", mock_client)
+    _mock_post_response(
+        monkeypatch, json_body={"message": {"content": "  hello world  "}}
+    )
 
     result = core_llm.generate_content(contents="hi")
 
@@ -19,35 +44,35 @@ def test_generate_content_returns_stripped_text(monkeypatch):
 
 
 def test_generate_content_raises_on_empty_response(monkeypatch):
-    mock_response = SimpleNamespace(text="")
-    mock_client = MagicMock()
-    mock_client.models.generate_content.return_value = mock_response
-    monkeypatch.setattr(core_llm, "client", mock_client)
+    _mock_post_response(monkeypatch, json_body={"message": {"content": ""}})
 
     with pytest.raises(RuntimeError):
         core_llm.generate_content(contents="hi")
 
 
 def test_generate_content_passes_system_instruction_and_temperature(monkeypatch):
-    mock_response = SimpleNamespace(text="ok")
-    mock_client = MagicMock()
-    mock_client.models.generate_content.return_value = mock_response
-    monkeypatch.setattr(core_llm, "client", mock_client)
+    mock_post = _mock_post_response(
+        monkeypatch, json_body={"message": {"content": "ok"}}
+    )
 
     core_llm.generate_content(
         contents="hi", system_instruction="be nice", temperature=0.5
     )
 
-    _, kwargs = mock_client.models.generate_content.call_args
-    assert kwargs["config"].system_instruction == "be nice"
-    assert kwargs["config"].temperature == 0.5
+    _, kwargs = mock_post.call_args
+    assert kwargs["json"]["messages"] == [
+        {"role": "system", "content": "be nice"},
+        {"role": "user", "content": "hi"},
+    ]
+    assert kwargs["json"]["options"]["temperature"] == 0.5
 
 
 def test_stream_content_yields_chunk_text(monkeypatch):
-    chunks = [SimpleNamespace(text="Hel"), SimpleNamespace(text="lo")]
-    mock_client = MagicMock()
-    mock_client.models.generate_content_stream.return_value = iter(chunks)
-    monkeypatch.setattr(core_llm, "client", mock_client)
+    lines = [
+        json.dumps({"message": {"content": "Hel"}, "done": False}),
+        json.dumps({"message": {"content": "lo"}, "done": True}),
+    ]
+    _mock_stream_response(monkeypatch, lines=lines)
 
     result = list(core_llm.stream_content(contents="hi"))
 
@@ -55,14 +80,12 @@ def test_stream_content_yields_chunk_text(monkeypatch):
 
 
 def test_stream_content_skips_empty_chunks(monkeypatch):
-    chunks = [
-        SimpleNamespace(text=""),
-        SimpleNamespace(text=None),
-        SimpleNamespace(text="ok"),
+    lines = [
+        json.dumps({"message": {"content": ""}, "done": False}),
+        json.dumps({"message": {}, "done": False}),
+        json.dumps({"message": {"content": "ok"}, "done": True}),
     ]
-    mock_client = MagicMock()
-    mock_client.models.generate_content_stream.return_value = iter(chunks)
-    monkeypatch.setattr(core_llm, "client", mock_client)
+    _mock_stream_response(monkeypatch, lines=lines)
 
     result = list(core_llm.stream_content(contents="hi"))
 
@@ -70,13 +93,19 @@ def test_stream_content_skips_empty_chunks(monkeypatch):
 
 
 def test_stream_content_propagates_upstream_errors(monkeypatch):
-    def broken_stream():
-        yield SimpleNamespace(text="partial")
+    def broken_lines():
+        yield json.dumps({"message": {"content": "partial"}, "done": False})
         raise RuntimeError("503 UNAVAILABLE")
 
-    mock_client = MagicMock()
-    mock_client.models.generate_content_stream.return_value = broken_stream()
-    monkeypatch.setattr(core_llm, "client", mock_client)
+    mock_response = MagicMock()
+    mock_response.raise_for_status.return_value = None
+    mock_response.iter_lines.return_value = broken_lines()
+
+    mock_context = MagicMock()
+    mock_context.__enter__.return_value = mock_response
+    mock_context.__exit__.return_value = False
+
+    monkeypatch.setattr(core_llm.httpx, "stream", MagicMock(return_value=mock_context))
 
     generator = core_llm.stream_content(contents="hi")
 

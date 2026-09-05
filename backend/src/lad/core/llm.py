@@ -1,13 +1,31 @@
+import json
 from collections.abc import Iterator
 
-from google import genai
-from google.genai import types
+import httpx
 
 from lad.schemas.config import conf
 
-client = genai.Client(
-    api_key=conf.GEMINI_API_KEY,
-)
+
+def _build_messages(
+    *, contents: str, system_instruction: str | None
+) -> list[dict[str, str]]:
+    messages: list[dict[str, str]] = []
+
+    if system_instruction is not None:
+        messages.append({"role": "system", "content": system_instruction})
+
+    messages.append({"role": "user", "content": contents})
+
+    return messages
+
+
+def _build_options(*, temperature: float | None) -> dict[str, float]:
+    options: dict[str, float] = {}
+
+    if temperature is not None:
+        options["temperature"] = temperature
+
+    return options
 
 
 def generate_content(
@@ -16,24 +34,26 @@ def generate_content(
     system_instruction: str | None = None,
     temperature: float | None = None,
 ) -> str:
-    config = types.GenerateContentConfig()
-
-    if system_instruction is not None:
-        config.system_instruction = system_instruction
-
-    if temperature is not None:
-        config.temperature = temperature
-
-    response = client.models.generate_content(
-        model=conf.GEMINI_MODEL,
-        contents=contents,
-        config=config,
+    response = httpx.post(
+        f"{conf.OLLAMA_HOST}/api/chat",
+        json={
+            "model": conf.OLLAMA_MODEL,
+            "messages": _build_messages(
+                contents=contents, system_instruction=system_instruction
+            ),
+            "stream": False,
+            "options": _build_options(temperature=temperature),
+        },
+        timeout=conf.OLLAMA_TIMEOUT,
     )
+    response.raise_for_status()
 
-    if not response.text:
+    text = response.json().get("message", {}).get("content", "")
+
+    if not text:
         raise RuntimeError("LLM returned an empty response")
 
-    return response.text.strip()
+    return text.strip()
 
 
 def stream_content(
@@ -42,20 +62,30 @@ def stream_content(
     system_instruction: str | None = None,
     temperature: float | None = None,
 ) -> Iterator[str]:
-    config = types.GenerateContentConfig()
+    with httpx.stream(
+        "POST",
+        f"{conf.OLLAMA_HOST}/api/chat",
+        json={
+            "model": conf.OLLAMA_MODEL,
+            "messages": _build_messages(
+                contents=contents, system_instruction=system_instruction
+            ),
+            "stream": True,
+            "options": _build_options(temperature=temperature),
+        },
+        timeout=conf.OLLAMA_TIMEOUT,
+    ) as response:
+        response.raise_for_status()
 
-    if system_instruction is not None:
-        config.system_instruction = system_instruction
+        for line in response.iter_lines():
+            if not line:
+                continue
 
-    if temperature is not None:
-        config.temperature = temperature
+            chunk = json.loads(line)
 
-    stream = client.models.generate_content_stream(
-        model=conf.GEMINI_MODEL,
-        contents=contents,
-        config=config,
-    )
+            text = chunk.get("message", {}).get("content")
+            if text:
+                yield text
 
-    for chunk in stream:
-        if chunk.text:
-            yield chunk.text
+            if chunk.get("done"):
+                break

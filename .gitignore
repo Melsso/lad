@@ -1,6 +1,7 @@
 __pycache__/
 .env
 .db_env
+.ollama.pid
 
 .ruff_cache/
 .mypy_cache/
