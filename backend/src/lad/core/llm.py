@@ -125,6 +125,21 @@ def _parse_tool_calls(raw_tool_calls: list[dict[str, Any]]) -> list[ToolCall]:
     ]
 
 
+def build_assistant_tool_call_message(turn: LLMTurn) -> dict[str, Any]:
+    return {
+        "role": "assistant",
+        "content": turn.content,
+        "tool_calls": [
+            {"function": {"name": call.name, "arguments": call.arguments}}
+            for call in turn.tool_calls
+        ],
+    }
+
+
+def build_tool_result_message(tool_name: str, content: str) -> dict[str, Any]:
+    return {"role": "tool", "tool_name": tool_name, "content": content}
+
+
 def generate_turn(
     *,
     messages: list[dict[str, Any]],

@@ -1,12 +1,14 @@
-import json
 import logging
 from collections.abc import Iterator
 
 from sqlalchemy.orm import Session
 
 from lad.core.db import get_db_session
+from lad.core.mcp import mcp_client
 from lad.core.sse import format_sse_event
+from lad.helpers.agent import run_agent_turn
 from lad.helpers.llm import generate_response_stream, generate_summary
+from lad.helpers.messages import create_message, sse_event_for_message
 from lad.models.db import Chat, ConversationSummary, Messages
 from lad.schemas.chat import ChatMessageResponse, ChatResponse
 from lad.schemas.config import conf
@@ -101,64 +103,6 @@ def get_messages_after_summary(
     return query.order_by(Messages.created_at).all()
 
 
-def create_message(
-    db: Session,
-    chat_id: int,
-    role: str,
-    content: str,
-    *,
-    tool_call_id: str | None = None,
-    tool_name: str | None = None,
-    tool_arguments: str | None = None,
-) -> Messages:
-    message = Messages(
-        chat_id=chat_id,
-        role=role,
-        content=content,
-        tool_call_id=tool_call_id,
-        tool_name=tool_name,
-        tool_arguments=tool_arguments,
-    )
-
-    db.add(message)
-    db.flush()
-
-    return message
-
-
-def create_tool_call_message(
-    db: Session, chat_id: int, call_id: str, tool_name: str, arguments: dict
-) -> Messages:
-    return create_message(
-        db=db,
-        chat_id=chat_id,
-        role="tool_call",
-        content="",
-        tool_call_id=call_id,
-        tool_name=tool_name,
-        tool_arguments=json.dumps(arguments),
-    )
-
-
-def create_tool_result_message(
-    db: Session, chat_id: int, call_id: str, tool_name: str, content: str
-) -> Messages:
-    return create_message(
-        db=db,
-        chat_id=chat_id,
-        role="tool_result",
-        content=content,
-        tool_call_id=call_id,
-        tool_name=tool_name,
-    )
-
-
-def sse_event_for_message(event: str, message: Messages) -> str:
-    payload = ChatMessageResponse.model_validate(message).model_dump(mode="json")
-
-    return format_sse_event(event, payload)
-
-
 def save_chat_summary(
     db: Session, chat_id: int, content: str, last_message_id: int
 ) -> ConversationSummary:
@@ -178,6 +122,34 @@ def save_chat_summary(
     db.flush()
 
     return summary
+
+
+def _stream_plain_reply(
+    db: Session, chat_id: int, summary: str | None, active_messages: list[Messages]
+) -> Iterator[str]:
+    full_response = ""
+
+    for chunk in generate_response_stream(
+        summary=summary,
+        messages=active_messages,
+    ):
+        full_response += chunk
+        yield format_sse_event("chunk", {"text": chunk})
+
+    full_response = full_response.strip()
+
+    if not full_response:
+        raise RuntimeError("LLM returned an empty response")
+
+    assistant_message = create_message(
+        db=db,
+        chat_id=chat_id,
+        role="assistant",
+        content=full_response,
+    )
+    db.commit()
+
+    yield sse_event_for_message("done", assistant_message)
 
 
 def _stream_and_persist_reply(db: Session, chat_id: int) -> Iterator[str]:
@@ -205,29 +177,12 @@ def _stream_and_persist_reply(db: Session, chat_id: int) -> Iterator[str]:
             active_messages = active_messages[-conf.RECENT_MESSAGES_TO_KEEP :]
             db.commit()
 
-    full_response = ""
+    summary_content = summary.content if summary else None
 
-    for chunk in generate_response_stream(
-        summary=summary.content if summary else None,
-        messages=active_messages,
-    ):
-        full_response += chunk
-        yield format_sse_event("chunk", {"text": chunk})
-
-    full_response = full_response.strip()
-
-    if not full_response:
-        raise RuntimeError("LLM returned an empty response")
-
-    assistant_message = create_message(
-        db=db,
-        chat_id=chat_id,
-        role="assistant",
-        content=full_response,
-    )
-    db.commit()
-
-    yield sse_event_for_message("done", assistant_message)
+    if mcp_client.list_tools():
+        yield from run_agent_turn(db, chat_id, summary_content, active_messages)
+    else:
+        yield from _stream_plain_reply(db, chat_id, summary_content, active_messages)
 
 
 def stream_chat_msg(chat_id: int, msg: str) -> Iterator[str]:

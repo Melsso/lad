@@ -17,6 +17,9 @@ class Settings(BaseSettings):
     OLLAMA_MODEL: str = "qwen3:8b"
     OLLAMA_TIMEOUT: float = 120.0
 
+    MCP_SERVERS: str = "[]"
+    MAX_TOOL_ITERATIONS: int = 5
+
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8")
 
 

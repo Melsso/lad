@@ -34,13 +34,25 @@ def chat_factory():
 def message_factory():
     from lad.models.db import Messages
 
-    def _factory(message_id, chat_id=1, role="user", content="hello", created_at=None):
+    def _factory(
+        message_id,
+        chat_id=1,
+        role="user",
+        content="hello",
+        created_at=None,
+        tool_call_id=None,
+        tool_name=None,
+        tool_arguments=None,
+    ):
         return Messages(
             id=message_id,
             chat_id=chat_id,
             role=role,
             content=content,
             created_at=created_at or datetime.now(UTC),
+            tool_call_id=tool_call_id,
+            tool_name=tool_name,
+            tool_arguments=tool_arguments,
         )
 
     return _factory

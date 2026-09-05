@@ -5,7 +5,7 @@ import pytest
 
 from lad.core import llm as core_llm
 from lad.helpers import llm as helpers_llm
-from lad.schemas.llm import ToolDefinition
+from lad.schemas.llm import LLMTurn, ToolCall, ToolDefinition
 
 
 def _mock_post_response(monkeypatch, *, json_body):
@@ -32,6 +32,39 @@ def _mock_stream_response(monkeypatch, *, lines):
     monkeypatch.setattr(core_llm.httpx, "stream", mock_stream)
 
     return mock_stream
+
+
+def test_build_assistant_tool_call_message_wraps_calls_in_ollama_shape():
+    turn = LLMTurn(
+        content="",
+        tool_calls=[
+            ToolCall(
+                call_id="call_0", name="get_temperature", arguments={"city": "NY"}
+            ),
+            ToolCall(call_id="call_1", name="get_time", arguments={}),
+        ],
+    )
+
+    result = core_llm.build_assistant_tool_call_message(turn)
+
+    assert result == {
+        "role": "assistant",
+        "content": "",
+        "tool_calls": [
+            {"function": {"name": "get_temperature", "arguments": {"city": "NY"}}},
+            {"function": {"name": "get_time", "arguments": {}}},
+        ],
+    }
+
+
+def test_build_tool_result_message_matches_ollama_tool_role_shape():
+    result = core_llm.build_tool_result_message("get_temperature", "22°C")
+
+    assert result == {
+        "role": "tool",
+        "tool_name": "get_temperature",
+        "content": "22°C",
+    }
 
 
 def test_generate_content_returns_stripped_text(monkeypatch):
@@ -245,6 +278,29 @@ def test_generate_turn_assigns_unique_call_ids_for_parallel_tool_calls(monkeypat
     assert next(generator) == "partial"
     with pytest.raises(RuntimeError, match="503 UNAVAILABLE"):
         next(generator)
+
+
+def test_build_llm_context_formats_tool_call_and_tool_result_rows(message_factory):
+    messages = [
+        message_factory(
+            1,
+            role="tool_call",
+            content="",
+            tool_name="get_temperature",
+            tool_arguments='{"city": "New York"}',
+        ),
+        message_factory(
+            2,
+            role="tool_result",
+            content="22°C",
+            tool_name="get_temperature",
+        ),
+    ]
+
+    context = helpers_llm.build_llm_context(summary=None, messages=messages)
+
+    assert 'TOOL_CALL get_temperature({"city": "New York"})' in context
+    assert "TOOL_RESULT get_temperature: 22°C" in context
 
 
 def test_build_llm_context_with_summary_and_messages(message_factory):

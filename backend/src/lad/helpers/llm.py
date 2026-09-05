@@ -43,10 +43,18 @@ Return only the updated summary.
 """
 
 
+def _format_message(message: Messages) -> str:
+    if message.role == "tool_call":
+        return f"TOOL_CALL {message.tool_name}({message.tool_arguments or '{}'})"
+
+    if message.role == "tool_result":
+        return f"TOOL_RESULT {message.tool_name}: {message.content}"
+
+    return f"{message.role.upper()}: {message.content}"
+
+
 def _format_messages(messages: Sequence[Messages]) -> str:
-    return "\n".join(
-        f"{message.role.upper()}: {message.content}" for message in messages
-    )
+    return "\n".join(_format_message(message) for message in messages)
 
 
 def generate_summary(
