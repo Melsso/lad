@@ -15,7 +15,9 @@ class Settings(BaseSettings):
 
     OLLAMA_HOST: str = "http://host.docker.internal:11434"
     OLLAMA_MODEL: str = "qwen3:8b"
+    OLLAMA_EMBED_MODEL: str = "embeddinggemma"
     OLLAMA_TIMEOUT: float = 120.0
+    EMBEDDING_DIM: int = 768
 
     MCP_SERVERS: str = "[]"
     MAX_TOOL_ITERATIONS: int = 5

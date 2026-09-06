@@ -1,5 +1,6 @@
 import asyncio
 import json
+import os
 from dataclasses import dataclass
 from typing import Any
 
@@ -31,6 +32,22 @@ def load_server_configs(raw: str) -> list[MCPServerConfig]:
     ]
 
 
+def _flatten_exceptions(exc: BaseException) -> list[BaseException]:
+    if isinstance(exc, BaseExceptionGroup):
+        flattened: list[BaseException] = []
+        for sub_exc in exc.exceptions:
+            flattened.extend(_flatten_exceptions(sub_exc))
+        return flattened
+
+    return [exc]
+
+
+def _describe_exception(exc: BaseException) -> str:
+    return "; ".join(
+        f"{type(leaf).__name__}: {leaf}" for leaf in _flatten_exceptions(exc)
+    )
+
+
 class MCPClient:
     def __init__(self, servers: list[MCPServerConfig]):
         self._servers = servers
@@ -40,13 +57,18 @@ class MCPClient:
         if not self._servers:
             return []
 
-        return asyncio.run(self._list_tools_async())
+        try:
+            return asyncio.run(self._list_tools_async())
+        except BaseExceptionGroup as group:
+            raise RuntimeError(_describe_exception(group)) from group
 
     async def _list_tools_async(self) -> list[ToolDefinition]:
         definitions: list[ToolDefinition] = []
 
         for server in self._servers:
-            params = StdioServerParameters(command=server.command, args=server.args)
+            params = StdioServerParameters(
+                command=server.command, args=server.args, env=dict(os.environ)
+            )
 
             async with (
                 stdio_client(params) as (read, write),
@@ -73,12 +95,17 @@ class MCPClient:
         if server is None:
             raise ValueError(f"Unknown MCP tool: {name}")
 
-        return asyncio.run(self._call_tool_async(server, name, arguments))
+        try:
+            return asyncio.run(self._call_tool_async(server, name, arguments))
+        except BaseExceptionGroup as group:
+            raise RuntimeError(_describe_exception(group)) from group
 
     async def _call_tool_async(
         self, server: MCPServerConfig, name: str, arguments: dict[str, Any]
     ) -> str:
-        params = StdioServerParameters(command=server.command, args=server.args)
+        params = StdioServerParameters(
+            command=server.command, args=server.args, env=dict(os.environ)
+        )
 
         async with (
             stdio_client(params) as (read, write),

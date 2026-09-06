@@ -2,13 +2,14 @@ import os
 import warnings
 
 import pytest
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, text
 from sqlalchemy.orm import sessionmaker
 
 os.environ.setdefault("DB_USER", "test")
 os.environ.setdefault("DB_PASSWORD", "test")
 os.environ.setdefault("DB_NAME", "test")
 os.environ.setdefault("DB_HOST", "localhost")
+os.environ.setdefault("MCP_SERVERS", "[]")
 
 warnings.filterwarnings("ignore", category=DeprecationWarning, module="testcontainers")
 
@@ -17,7 +18,7 @@ warnings.filterwarnings("ignore", category=DeprecationWarning, module="testconta
 def postgres_container():
     from testcontainers.community.postgres import PostgresContainer
 
-    with PostgresContainer("postgres:16-alpine", driver="psycopg") as container:
+    with PostgresContainer("pgvector/pgvector:pg16", driver="psycopg") as container:
         yield container
 
 
@@ -26,6 +27,10 @@ def postgres_engine(postgres_container):
     from lad.models.db import Base
 
     engine = create_engine(postgres_container.get_connection_url())
+
+    with engine.begin() as conn:
+        conn.execute(text("CREATE EXTENSION IF NOT EXISTS vector"))
+
     Base.metadata.create_all(engine)
 
     yield engine

@@ -8,6 +8,16 @@ from lad.schemas.config import conf
 from lad.schemas.llm import LLMTurn, ToolCall, ToolDefinition
 
 
+def raise_for_ollama_status(response: httpx.Response, model: str) -> None:
+    if response.status_code == 404:
+        raise RuntimeError(
+            f"Ollama model '{model}' was not found. "
+            f"Pull it first with: ollama pull {model}"
+        )
+
+    response.raise_for_status()
+
+
 def _build_messages(
     *, contents: str, system_instruction: str | None
 ) -> list[dict[str, str]]:
@@ -48,7 +58,7 @@ def generate_content(
         },
         timeout=conf.OLLAMA_TIMEOUT,
     )
-    response.raise_for_status()
+    raise_for_ollama_status(response, conf.OLLAMA_MODEL)
 
     text = response.json().get("message", {}).get("content", "")
 
@@ -77,7 +87,7 @@ def stream_content(
         },
         timeout=conf.OLLAMA_TIMEOUT,
     ) as response:
-        response.raise_for_status()
+        raise_for_ollama_status(response, conf.OLLAMA_MODEL)
 
         for line in response.iter_lines():
             if not line:
@@ -161,7 +171,7 @@ def generate_turn(
         json=payload,
         timeout=conf.OLLAMA_TIMEOUT,
     )
-    response.raise_for_status()
+    raise_for_ollama_status(response, conf.OLLAMA_MODEL)
 
     message = response.json().get("message", {})
 

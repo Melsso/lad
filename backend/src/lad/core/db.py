@@ -15,6 +15,18 @@ engine = None
 SessionLocal = None
 
 
+def _build_database_url() -> str:
+    return (
+        f"postgresql+psycopg://{conf.DB_USER}:{conf.DB_PASSWORD}"
+        f"@{conf.DB_HOST}:{conf.DB_PORT}/{conf.DB_NAME}"
+    )
+
+
+def _ensure_pgvector_extension(engine) -> None:
+    with engine.begin() as conn:
+        conn.execute(text("CREATE EXTENSION IF NOT EXISTS vector"))
+
+
 def init_db():
     global engine, SessionLocal
 
@@ -28,15 +40,12 @@ def init_db():
                     "context": {"location": "init_db"},
                 },
             )
-            DATABASE_URL = (
-                f"postgresql+psycopg://{conf.DB_USER}:{conf.DB_PASSWORD}"
-                f"@{conf.DB_HOST}:{conf.DB_PORT}/{conf.DB_NAME}"
-            )
-            engine = create_engine(DATABASE_URL, echo=False)
+            engine = create_engine(_build_database_url(), echo=False)
 
             with engine.connect() as conn:
                 conn.execute(text("SELECT 1"))
 
+            _ensure_pgvector_extension(engine)
             Base.metadata.create_all(bind=engine)
             SessionLocal = sessionmaker(bind=engine, autoflush=False, autocommit=False)
 
@@ -62,6 +71,19 @@ def init_db():
                 },
             )
             time.sleep(30)
+
+
+def connect_db():
+    global engine, SessionLocal
+
+    engine = create_engine(_build_database_url(), echo=False)
+
+    with engine.connect() as conn:
+        conn.execute(text("SELECT 1"))
+
+    _ensure_pgvector_extension(engine)
+    Base.metadata.create_all(bind=engine)
+    SessionLocal = sessionmaker(bind=engine, autoflush=False, autocommit=False)
 
 
 def get_db():

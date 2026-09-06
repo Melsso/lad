@@ -1,7 +1,10 @@
 from datetime import UTC, datetime
 
+from pgvector.sqlalchemy import Vector
 from sqlalchemy import DateTime, ForeignKey, Index, String, Text
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
+
+from lad.schemas.config import conf
 
 
 class Base(DeclarativeBase):
@@ -59,4 +62,17 @@ class ConversationSummary(Base):
 
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=lambda: datetime.now(UTC), nullable=False
+    )
+
+
+class DocumentChunk(Base):
+    __tablename__ = "document_chunks"
+
+    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
+    source_path: Mapped[str] = mapped_column(String(500), nullable=False)
+    chunk_index: Mapped[int] = mapped_column(nullable=False)
+
+    content: Mapped[str] = mapped_column(Text, nullable=False)
+    embedding: Mapped[list[float]] = mapped_column(
+        Vector(conf.EMBEDDING_DIM), nullable=False
     )

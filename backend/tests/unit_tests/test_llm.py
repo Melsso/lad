@@ -67,6 +67,34 @@ def test_build_tool_result_message_matches_ollama_tool_role_shape():
     }
 
 
+def test_raise_for_ollama_status_gives_a_clear_message_on_404(monkeypatch):
+    mock_response = MagicMock()
+    mock_response.status_code = 404
+
+    with pytest.raises(RuntimeError, match="ollama pull embeddinggemma"):
+        core_llm.raise_for_ollama_status(mock_response, "embeddinggemma")
+
+    mock_response.raise_for_status.assert_not_called()
+
+
+def test_raise_for_ollama_status_delegates_other_errors_to_raise_for_status():
+    mock_response = MagicMock()
+    mock_response.status_code = 500
+
+    core_llm.raise_for_ollama_status(mock_response, "qwen3:8b")
+
+    mock_response.raise_for_status.assert_called_once()
+
+
+def test_raise_for_ollama_status_does_nothing_on_success():
+    mock_response = MagicMock()
+    mock_response.status_code = 200
+
+    core_llm.raise_for_ollama_status(mock_response, "qwen3:8b")
+
+    mock_response.raise_for_status.assert_called_once()
+
+
 def test_generate_content_returns_stripped_text(monkeypatch):
     _mock_post_response(
         monkeypatch, json_body={"message": {"content": "  hello world  "}}
