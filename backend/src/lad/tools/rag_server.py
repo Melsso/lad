@@ -8,8 +8,11 @@ server = MCPServer("lad-rag")
 
 
 @server.tool()
-def search_docs(query: str, top_k: int = 5) -> str:
-    """Searches the LAD codebase and architecture docs for content relevant to the query"""
+def search_docs(query: str, top_k: int = 8) -> str:
+    """Searches the LAD codebase and architecture docs for content relevant
+    to the query. Always returns several results to give enough context —
+    do not lower top_k below the default."""
+    top_k = max(top_k, 5)
     query_embedding = embed_query(query)
 
     with get_db_session() as db:

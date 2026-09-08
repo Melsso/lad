@@ -6,6 +6,7 @@ import {
   retryMessage,
   streamMessage,
 } from "../services/chat";
+import { emitChatCreated } from "../context/chatEvents";
 import type { ChatMessage, StreamMessageHandlers } from "../types/chat";
 
 interface UseChatStreamResult {
@@ -174,6 +175,7 @@ export function useChatStream(
             const chat = await createChat(content);
             targetChatId = chat.id;
             didCreateChat = true;
+            emitChatCreated(chat);
           } catch {
             lastAttemptRef.current = { mode: "resend", content };
 

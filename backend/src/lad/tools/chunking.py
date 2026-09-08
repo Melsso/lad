@@ -7,6 +7,15 @@ GENERIC_CHUNK_OVERLAP = 200
 _CHUNKABLE_NODE_TYPES = (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)
 
 
+def _is_import_only(text: str) -> bool:
+    lines = [line.strip() for line in text.splitlines() if line.strip()]
+
+    if not lines:
+        return True
+
+    return all(line.startswith(("import ", "from ")) for line in lines)
+
+
 def chunk_generic_text(
     content: str,
     chunk_size: int = GENERIC_CHUNK_SIZE,
@@ -55,7 +64,7 @@ def chunk_python_source(content: str) -> list[str]:
     lines = content.splitlines()
     preamble = "\n".join(lines[: top_level_nodes[0].lineno - 1]).strip()
 
-    chunks = [preamble] if preamble else []
+    chunks = [preamble] if preamble and not _is_import_only(preamble) else []
 
     for node in top_level_nodes:
         segment = ast.get_source_segment(content, node)

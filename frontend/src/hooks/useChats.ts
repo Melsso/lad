@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 
 import { getChats } from "../services/chat";
+import { onChatCreated } from "../context/chatEvents";
 import type { Chat } from "../types/chat";
 
 interface UseChatsResult {
@@ -57,6 +58,18 @@ export function useChats(): UseChatsResult {
     return () => {
       cancelled = true;
     };
+  }, []);
+
+  useEffect(() => {
+    return onChatCreated((chat) => {
+      setChats((current) => {
+        if (current.some((existing) => existing.id === chat.id)) {
+          return current;
+        }
+
+        return [...current, chat];
+      });
+    });
   }, []);
 
   const updateLocalChat = useCallback(

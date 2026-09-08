@@ -63,7 +63,9 @@ def run_ingestion(repo_root: Path) -> None:
         print("Nothing to index.")
         return
 
-    texts = [content for _, _, content in records]
+    texts = [
+        f"# {relative_path}\n\n{chunk_text}" for relative_path, _, chunk_text in records
+    ]
     embeddings: list[list[float]] = []
 
     for batch in _batched(texts, EMBED_BATCH_SIZE):

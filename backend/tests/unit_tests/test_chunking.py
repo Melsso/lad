@@ -21,7 +21,7 @@ def test_chunk_generic_text_splits_long_content():
     assert all(chunk for chunk in result)
 
 
-def test_chunk_python_source_splits_by_function_and_class():
+def test_chunk_python_source_drops_import_only_preamble():
     source = (
         "import os\n"
         "\n"
@@ -36,10 +36,32 @@ def test_chunk_python_source_splits_by_function_and_class():
 
     chunks = chunking.chunk_python_source(source)
 
-    assert len(chunks) == 3
-    assert chunks[0] == "import os"
+    assert len(chunks) == 2
+    assert "def foo():" in chunks[0]
+    assert "class Bar:" in chunks[1]
+
+
+def test_chunk_python_source_keeps_preamble_with_real_content():
+    source = "import os\n\nMAX_RETRIES = 3\n\n\ndef foo():\n    return 1\n"
+
+    chunks = chunking.chunk_python_source(source)
+
+    assert len(chunks) == 2
+    assert chunks[0] == "import os\n\nMAX_RETRIES = 3"
     assert "def foo():" in chunks[1]
-    assert "class Bar:" in chunks[2]
+
+
+def test_is_import_only_true_for_pure_import_block():
+    assert chunking._is_import_only("import os\nfrom typing import Any")
+
+
+def test_is_import_only_false_when_real_code_present():
+    assert not chunking._is_import_only("import os\n\nMAX_RETRIES = 3")
+
+
+def test_is_import_only_true_for_blank_text():
+    assert chunking._is_import_only("")
+    assert chunking._is_import_only("   \n  \n")
 
 
 def test_chunk_python_source_with_no_top_level_defs_falls_back_to_generic():

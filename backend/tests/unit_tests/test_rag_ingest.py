@@ -37,9 +37,13 @@ def test_find_source_files_includes_expected_and_excludes_node_modules(tmp_path)
 def test_run_ingestion_embeds_and_persists_chunks(monkeypatch, tmp_path, mock_session):
     repo_root = _make_repo(tmp_path)
 
-    monkeypatch.setattr(
-        rag_ingest, "embed_texts", lambda texts: [[0.1, 0.2, 0.3] for _ in texts]
-    )
+    captured_texts: list[str] = []
+
+    def fake_embed_texts(texts):
+        captured_texts.extend(texts)
+        return [[0.1, 0.2, 0.3] for _ in texts]
+
+    monkeypatch.setattr(rag_ingest, "embed_texts", fake_embed_texts)
 
     class _SessionContext:
         def __enter__(self):
@@ -55,6 +59,13 @@ def test_run_ingestion_embeds_and_persists_chunks(monkeypatch, tmp_path, mock_se
     mock_session.execute.assert_called_once()
     assert mock_session.add.call_count > 0
     mock_session.commit.assert_called_once()
+
+    assert any(text.startswith("# backend/src/lad/core.py") for text in captured_texts)
+
+    added_chunks = [call.args[0] for call in mock_session.add.call_args_list]
+    assert all(
+        "# backend/src/lad/core.py" not in chunk.content for chunk in added_chunks
+    )
 
 
 def test_run_ingestion_with_no_matching_files_does_nothing(

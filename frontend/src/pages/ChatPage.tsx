@@ -5,12 +5,13 @@ import { AppLayout } from "../components/layout/AppLayout";
 import { ChatWindow } from "../components/chat/ChatWindow";
 import { MessageInput } from "../components/chat/MessageInput";
 import { useChatStream } from "../hooks/useChatStream";
+import { useFavicon } from "../hooks/useFavicon";
 
 export function ChatPage() {
   const { chatId } = useParams();
   const navigate = useNavigate();
   const selectedChatId = chatId ? Number(chatId) : null;
-
+  
   const handleChatCreated = useCallback(
     (newChatId: number) => {
       navigate(`/chat/${newChatId}`, { replace: true });
@@ -27,6 +28,7 @@ export function ChatPage() {
     sendMessage,
     retry,
   } = useChatStream(selectedChatId, handleChatCreated);
+  useFavicon(isStreaming);
 
   const hasContent =
     selectedChatId !== null ||
