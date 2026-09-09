@@ -1,6 +1,7 @@
 export interface Chat {
   id: number;
   title: string;
+  mode: "chat" | "agent";
   created_at: string;
 }
 

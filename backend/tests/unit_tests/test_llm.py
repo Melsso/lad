@@ -34,6 +34,78 @@ def _mock_stream_response(monkeypatch, *, lines):
     return mock_stream
 
 
+def test_generate_content_uses_default_model_when_not_overridden(monkeypatch):
+    mock_post = _mock_post_response(
+        monkeypatch, json_body={"message": {"content": "ok"}}
+    )
+
+    core_llm.generate_content(contents="hi")
+
+    _, kwargs = mock_post.call_args
+    assert kwargs["json"]["model"] == core_llm.conf.OLLAMA_MODEL
+    assert kwargs["json"]["options"]["num_ctx"] == core_llm.conf.OLLAMA_NUM_CTX
+
+
+def test_generate_content_uses_the_provided_model_override(monkeypatch):
+    mock_post = _mock_post_response(
+        monkeypatch, json_body={"message": {"content": "ok"}}
+    )
+
+    core_llm.generate_content(contents="hi", model="gemma4:12b")
+
+    _, kwargs = mock_post.call_args
+    assert kwargs["json"]["model"] == "gemma4:12b"
+
+
+def test_generate_turn_uses_the_provided_model_override(monkeypatch):
+    mock_post = _mock_post_response(
+        monkeypatch, json_body={"message": {"content": "ok"}}
+    )
+
+    core_llm.generate_turn(
+        messages=[{"role": "user", "content": "hi"}], model="gemma4:12b"
+    )
+
+    _, kwargs = mock_post.call_args
+    assert kwargs["json"]["model"] == "gemma4:12b"
+    assert kwargs["json"]["options"]["num_ctx"] == core_llm.conf.OLLAMA_NUM_CTX
+
+
+def test_generate_turn_error_message_names_the_overridden_model(monkeypatch):
+    mock_response = MagicMock()
+    mock_response.status_code = 404
+    _mock_post_response(monkeypatch, json_body={})
+    monkeypatch.setattr(core_llm.httpx, "post", MagicMock(return_value=mock_response))
+
+    with pytest.raises(RuntimeError, match="gemma4:12b"):
+        core_llm.generate_turn(
+            messages=[{"role": "user", "content": "hi"}], model="gemma4:12b"
+        )
+
+
+def test_stream_content_uses_the_provided_model_override(monkeypatch):
+    mock_stream = _mock_stream_response(
+        monkeypatch, lines=[json.dumps({"message": {"content": "ok"}, "done": True})]
+    )
+
+    list(core_llm.stream_content(contents="hi", model="gemma4:12b"))
+
+    _, kwargs = mock_stream.call_args
+    assert kwargs["json"]["model"] == "gemma4:12b"
+
+
+def test_build_options_includes_num_ctx_when_given():
+    options = core_llm._build_options(temperature=None, num_ctx=8192)
+
+    assert options == {"num_ctx": 8192}
+
+
+def test_build_options_omits_num_ctx_when_not_given():
+    options = core_llm._build_options(temperature=0.5)
+
+    assert options == {"temperature": 0.5}
+
+
 def test_build_assistant_tool_call_message_wraps_calls_in_ollama_shape():
     turn = LLMTurn(
         content="",

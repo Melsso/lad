@@ -21,10 +21,11 @@ def mock_session():
 def chat_factory():
     from lad.models.db import Chat
 
-    def _factory(chat_id=1, title="Test Chat", created_at=None):
+    def _factory(chat_id=1, title="Test Chat", mode="chat", created_at=None):
         return Chat(
             id=chat_id,
             title=title,
+            mode=mode,
             created_at=created_at or datetime.now(UTC),
         )
 

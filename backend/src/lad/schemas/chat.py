@@ -1,4 +1,5 @@
 from datetime import datetime
+from typing import Literal
 
 from pydantic import BaseModel, ConfigDict
 
@@ -6,6 +7,7 @@ from pydantic import BaseModel, ConfigDict
 class ChatResponse(BaseModel):
     id: int
     title: str
+    mode: str
     created_at: datetime
 
     model_config = ConfigDict(from_attributes=True)
@@ -34,6 +36,7 @@ class SendMessageRequest(BaseModel):
 
 class CreateChatRequest(BaseModel):
     title: str | None = None
+    mode: Literal["chat", "agent"] = "chat"
 
 
 class UpdateChatTitleRequest(BaseModel):

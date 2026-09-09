@@ -5,11 +5,17 @@ from sqlalchemy.exc import SQLAlchemyError
 from lad.routes import chat as chat_routes
 
 
+def test_create_chat_rejects_invalid_mode(client):
+    response = client.post("/chat/create", json={"title": "hi", "mode": "bogus"})
+
+    assert response.status_code == 422
+
+
 def test_create_chat_success(monkeypatch, client):
     created = MagicMock(
-        id=1, title="hello world", created_at="2026-01-01T00:00:00+00:00"
+        id=1, title="hello world", mode="chat", created_at="2026-01-01T00:00:00+00:00"
     )
-    monkeypatch.setattr(chat_routes, "create_chat", lambda db, title: created)
+    monkeypatch.setattr(chat_routes, "create_chat", lambda db, title, mode: created)
 
     response = client.post("/chat/create", json={"title": "hello world"})
 
@@ -20,9 +26,11 @@ def test_create_chat_success(monkeypatch, client):
 def test_create_chat_defaults_when_no_title(monkeypatch, client):
     captured = {}
 
-    def fake_create_chat(db, title):
+    def fake_create_chat(db, title, mode):
         captured["title"] = title
-        return MagicMock(id=1, title=title, created_at="2026-01-01T00:00:00+00:00")
+        return MagicMock(
+            id=1, title=title, mode=mode, created_at="2026-01-01T00:00:00+00:00"
+        )
 
     monkeypatch.setattr(chat_routes, "create_chat", fake_create_chat)
 
@@ -35,9 +43,11 @@ def test_create_chat_defaults_when_no_title(monkeypatch, client):
 def test_create_chat_truncates_long_title(monkeypatch, client):
     captured = {}
 
-    def fake_create_chat(db, title):
+    def fake_create_chat(db, title, mode):
         captured["title"] = title
-        return MagicMock(id=1, title=title, created_at="2026-01-01T00:00:00+00:00")
+        return MagicMock(
+            id=1, title=title, mode=mode, created_at="2026-01-01T00:00:00+00:00"
+        )
 
     monkeypatch.setattr(chat_routes, "create_chat", fake_create_chat)
 
@@ -50,7 +60,7 @@ def test_create_chat_truncates_long_title(monkeypatch, client):
 
 
 def test_create_chat_db_error(monkeypatch, client):
-    def raise_error(db, title):
+    def raise_error(db, title, mode):
         raise SQLAlchemyError("boom")
 
     monkeypatch.setattr(chat_routes, "create_chat", raise_error)
@@ -61,7 +71,9 @@ def test_create_chat_db_error(monkeypatch, client):
 
 
 def test_update_chat_title_success(monkeypatch, client):
-    updated = MagicMock(id=1, title="New Title", created_at="2026-01-01T00:00:00+00:00")
+    updated = MagicMock(
+        id=1, title="New Title", mode="chat", created_at="2026-01-01T00:00:00+00:00"
+    )
     monkeypatch.setattr(
         chat_routes, "update_chat_title", lambda db, chat_id, title: updated
     )

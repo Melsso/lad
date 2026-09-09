@@ -203,7 +203,7 @@ describe("useChatStream", () => {
     });
 
     await waitFor(() =>
-      expect(mockedCreateChat).toHaveBeenCalledWith("first message"),
+      expect(mockedCreateChat).toHaveBeenCalledWith("first message", "chat"),
     );
     await waitFor(() => expect(mockedStreamMessage).toHaveBeenCalled());
 
@@ -217,13 +217,29 @@ describe("useChatStream", () => {
     await waitFor(() => expect(onChatCreated).toHaveBeenCalledWith(99));
   });
 
-  it("a createChat failure sets an error retryable by resending", async () => {
+  it("sendMessage on a new chat passes the selected agent mode through to createChat", async () => {
+    mockedCreateChat.mockResolvedValue(makeChat({ id: 99, mode: "agent" }));
+    const streamer = controllableStreamer();
+    mockedStreamMessage.mockImplementation(streamer.fn);
+
+    const { result } = renderHook(() => useChatStream(null, vi.fn()));
+
+    act(() => {
+      result.current.sendMessage("first message", "agent");
+    });
+
+    await waitFor(() =>
+      expect(mockedCreateChat).toHaveBeenCalledWith("first message", "agent"),
+    );
+  });
+
+  it("a createChat failure sets an error retryable by resending, preserving the selected mode", async () => {
     mockedCreateChat.mockRejectedValue(new Error("boom"));
 
     const { result } = renderHook(() => useChatStream(null, vi.fn()));
 
     act(() => {
-      result.current.sendMessage("first message");
+      result.current.sendMessage("first message", "agent");
     });
 
     await waitFor(() =>
@@ -232,7 +248,7 @@ describe("useChatStream", () => {
       ),
     );
 
-    mockedCreateChat.mockResolvedValue(makeChat({ id: 5 }));
+    mockedCreateChat.mockResolvedValue(makeChat({ id: 5, mode: "agent" }));
     mockedStreamMessage.mockResolvedValue(undefined);
 
     act(() => {
@@ -240,7 +256,10 @@ describe("useChatStream", () => {
     });
 
     await waitFor(() =>
-      expect(mockedCreateChat).toHaveBeenLastCalledWith("first message"),
+      expect(mockedCreateChat).toHaveBeenLastCalledWith(
+        "first message",
+        "agent",
+      ),
     );
   });
 

@@ -43,7 +43,7 @@ async def create_chat_endpoint(
             else "New Chat"
         )
 
-        chat = create_chat(db=db, title=title)
+        chat = create_chat(db=db, title=title, mode=chat_request.mode)
 
         db.commit()
         db.refresh(chat)

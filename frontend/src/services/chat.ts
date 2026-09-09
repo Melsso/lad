@@ -16,11 +16,15 @@ export function getChatMessages(chatId: number): Promise<ChatMessage[]> {
   return api<ChatMessage[]>(`/chat/messages?chat_id=${chatId}`);
 }
 
-export function createChat(title?: string): Promise<Chat> {
+export function createChat(
+  title?: string,
+  mode: "chat" | "agent" = "chat",
+): Promise<Chat> {
   return api<Chat>("/chat/create", {
     method: "POST",
     body: JSON.stringify({
       title,
+      mode,
     }),
   });
 }

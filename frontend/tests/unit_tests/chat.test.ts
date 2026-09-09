@@ -47,7 +47,21 @@ describe("chat CRUD functions", () => {
       "/chat/create",
       expect.objectContaining({
         method: "POST",
-        body: JSON.stringify({ title: "hello there" }),
+        body: JSON.stringify({ title: "hello there", mode: "chat" }),
+      }),
+    );
+  });
+
+  it("createChat posts the requested mode when creating an agent chat", async () => {
+    mockedApi.mockResolvedValue({});
+
+    await createChat("hello there", "agent");
+
+    expect(mockedApi).toHaveBeenCalledWith(
+      "/chat/create",
+      expect.objectContaining({
+        method: "POST",
+        body: JSON.stringify({ title: "hello there", mode: "agent" }),
       }),
     );
   });

@@ -15,12 +15,13 @@ interface UseChatStreamResult {
   streamingText: string;
   isStreaming: boolean;
   error: string | null;
-  sendMessage: (content: string) => void;
+  sendMessage: (content: string, mode?: "chat" | "agent") => void;
   retry: () => void;
 }
 
 type LastAttempt =
-  { mode: "resend"; content: string } | { mode: "regenerate"; chatId: number };
+  | { mode: "resend"; content: string; chatMode: "chat" | "agent" }
+  | { mode: "regenerate"; chatId: number };
 
 export function useChatStream(
   chatId: number | null,
@@ -163,7 +164,7 @@ export function useChatStream(
   );
 
   const sendMessage = useCallback(
-    (content: string) => {
+    (content: string, mode: "chat" | "agent" = "chat") => {
       const requestChatId = chatId;
 
       async function prepare() {
@@ -172,12 +173,16 @@ export function useChatStream(
 
         if (targetChatId === null) {
           try {
-            const chat = await createChat(content);
+            const chat = await createChat(content, mode);
             targetChatId = chat.id;
             didCreateChat = true;
             emitChatCreated(chat);
           } catch {
-            lastAttemptRef.current = { mode: "resend", content };
+            lastAttemptRef.current = {
+              mode: "resend",
+              content,
+              chatMode: mode,
+            };
 
             if (activeChatIdRef.current === requestChatId) {
               setError("Could not start a new chat. Try again.");
@@ -230,7 +235,7 @@ export function useChatStream(
     setError(null);
 
     if (attempt.mode === "resend") {
-      sendMessage(attempt.content);
+      sendMessage(attempt.content, attempt.chatMode);
       return;
     }
 

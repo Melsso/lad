@@ -34,7 +34,24 @@ else
 fi
 
 OLLAMA_PID_FILE=".ollama.pid"
-OLLAMA_MODEL="qwen3:8b"
+ENV_FILE="backend/.env"
+get_env_or_default() {
+  local key="$1"
+  local default="$2"
+  if [ -f "$ENV_FILE" ]; then
+    local value
+    value=$(grep -E "^${key}=" "$ENV_FILE" | tail -n1 | cut -d '=' -f2-)
+    if [ -n "$value" ]; then
+      echo "$value"
+      return
+    fi
+  fi
+  echo "$default"
+}
+
+OLLAMA_MODEL="$(get_env_or_default OLLAMA_MODEL "qwen3:8b")"
+OLLAMA_AGENT_MODEL="$(get_env_or_default OLLAMA_AGENT_MODEL "gemma4:12b")"
+OLLAMA_EMBED_MODEL="$(get_env_or_default OLLAMA_EMBED_MODEL "embeddinggemma")"
 
 echo "Checking Ollama..."
 
@@ -53,10 +70,18 @@ else
   done
 fi
 
-if ! ollama list | grep -q "$OLLAMA_MODEL"; then
-  echo "Pulling $OLLAMA_MODEL..."
-  ollama pull "$OLLAMA_MODEL"
-fi
+echo "Checking required models..."
+
+REQUIRED_MODELS=$(printf '%s\n' "$OLLAMA_MODEL" "$OLLAMA_AGENT_MODEL" "$OLLAMA_EMBED_MODEL" | sort -u)
+
+while IFS= read -r model; do
+  if ! ollama list | awk '{print $1}' | grep -qx "$model"; then
+    echo "Pulling $model..."
+    ollama pull "$model"
+  else
+    echo "$model already present."
+  fi
+done <<< "$REQUIRED_MODELS"
 
 echo "Starting app stack..."
 

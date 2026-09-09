@@ -1,3 +1,4 @@
+import json
 import logging
 from collections.abc import Iterator
 from typing import Any
@@ -11,7 +12,7 @@ from lad.core.llm import (
 )
 from lad.core.mcp import mcp_client
 from lad.core.sse import format_sse_event
-from lad.helpers.llm import SYSTEM_PROMPT, build_llm_context
+from lad.helpers.llm import AGENT_SYSTEM_PROMPT
 from lad.helpers.messages import (
     create_message,
     create_tool_call_message,
@@ -20,6 +21,7 @@ from lad.helpers.messages import (
 )
 from lad.models.db import Messages
 from lad.schemas.config import conf
+from lad.schemas.llm import LLMTurn, ToolCall
 
 logger = logging.getLogger("Lad")
 
@@ -46,6 +48,27 @@ def _call_tool(name: str, arguments: dict[str, Any]) -> str:
         return f"Error calling {name}: {exc}"
 
 
+def _message_to_turn(message: Messages) -> dict[str, Any]:
+    if message.role == "tool_call":
+        arguments = json.loads(message.tool_arguments) if message.tool_arguments else {}
+        turn = LLMTurn(
+            content="",
+            tool_calls=[
+                ToolCall(
+                    call_id=message.tool_call_id or "",
+                    name=message.tool_name or "",
+                    arguments=arguments,
+                )
+            ],
+        )
+        return build_assistant_tool_call_message(turn)
+
+    if message.role == "tool_result":
+        return build_tool_result_message(message.tool_name or "", message.content)
+
+    return {"role": message.role, "content": message.content}
+
+
 def run_agent_turn(
     db: Session,
     chat_id: int,
@@ -54,11 +77,19 @@ def run_agent_turn(
 ) -> Iterator[str]:
     tools = mcp_client.list_tools()
 
-    context = build_llm_context(summary=summary, messages=history)
     conversation: list[dict[str, Any]] = [
-        {"role": "system", "content": SYSTEM_PROMPT},
-        {"role": "user", "content": context},
+        {"role": "system", "content": AGENT_SYSTEM_PROMPT}
     ]
+
+    if summary:
+        conversation.append(
+            {
+                "role": "system",
+                "content": f"Summary of earlier conversation:\n\n{summary}",
+            }
+        )
+
+    conversation.extend(_message_to_turn(message) for message in history)
 
     for iteration in range(conf.MAX_TOOL_ITERATIONS):
         is_last_iteration = iteration == conf.MAX_TOOL_ITERATIONS - 1
@@ -66,6 +97,7 @@ def run_agent_turn(
         turn = generate_turn(
             messages=conversation,
             tools=None if is_last_iteration else tools,
+            model=conf.OLLAMA_AGENT_MODEL,
         )
 
         if not turn.tool_calls:

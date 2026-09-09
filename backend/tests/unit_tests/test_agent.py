@@ -27,6 +27,168 @@ def _parse_sse(raw: str) -> tuple[str, dict]:
     return lines[0].removeprefix("event: "), json.loads(lines[1].removeprefix("data: "))
 
 
+def test_message_to_turn_converts_plain_user_and_assistant_messages(message_factory):
+    user_message = message_factory(1, role="user", content="hi there")
+    assistant_message = message_factory(2, role="assistant", content="hello")
+
+    assert agent_module._message_to_turn(user_message) == {
+        "role": "user",
+        "content": "hi there",
+    }
+    assert agent_module._message_to_turn(assistant_message) == {
+        "role": "assistant",
+        "content": "hello",
+    }
+
+
+def test_message_to_turn_reconstructs_tool_call_message(message_factory):
+    tool_call_message = message_factory(
+        3,
+        role="tool_call",
+        content="",
+        tool_call_id="call_0",
+        tool_name="get_temperature",
+        tool_arguments='{"city": "New York"}',
+    )
+
+    result = agent_module._message_to_turn(tool_call_message)
+
+    assert result == {
+        "role": "assistant",
+        "content": "",
+        "tool_calls": [
+            {
+                "function": {
+                    "name": "get_temperature",
+                    "arguments": {"city": "New York"},
+                }
+            }
+        ],
+    }
+
+
+def test_message_to_turn_handles_missing_tool_arguments(message_factory):
+    tool_call_message = message_factory(
+        3,
+        role="tool_call",
+        content="",
+        tool_call_id="call_0",
+        tool_name="get_time",
+        tool_arguments=None,
+    )
+
+    result = agent_module._message_to_turn(tool_call_message)
+
+    assert result["tool_calls"][0]["function"]["arguments"] == {}
+
+
+def test_message_to_turn_reconstructs_tool_result_message(message_factory):
+    tool_result_message = message_factory(
+        4,
+        role="tool_result",
+        content="22°C",
+        tool_call_id="call_0",
+        tool_name="get_temperature",
+    )
+
+    result = agent_module._message_to_turn(tool_result_message)
+
+    assert result == {
+        "role": "tool",
+        "tool_name": "get_temperature",
+        "content": "22°C",
+    }
+
+
+def test_run_agent_turn_builds_history_as_separate_turns_not_flattened_text(
+    monkeypatch, mock_session, message_factory
+):
+    monkeypatch.setattr(agent_module.mcp_client, "list_tools", list)
+
+    captured_messages = []
+
+    def fake_generate_turn(*, messages, tools, model=None):
+        captured_messages.append(messages)
+        return LLMTurn(content="second answer", tool_calls=[])
+
+    monkeypatch.setattr(agent_module, "generate_turn", fake_generate_turn)
+
+    history = [
+        message_factory(1, role="user", content="first question"),
+        message_factory(
+            2,
+            role="tool_call",
+            content="",
+            tool_call_id="call_0",
+            tool_name="search_docs",
+            tool_arguments='{"query": "first question"}',
+        ),
+        message_factory(
+            3,
+            role="tool_result",
+            content="some retrieved content",
+            tool_call_id="call_0",
+            tool_name="search_docs",
+        ),
+        message_factory(4, role="assistant", content="first answer"),
+        message_factory(5, role="user", content="second question"),
+    ]
+
+    list(
+        agent_module.run_agent_turn(
+            mock_session, chat_id=1, summary=None, history=history
+        )
+    )
+
+    conversation = captured_messages[0]
+
+    assert conversation[0] == {
+        "role": "system",
+        "content": agent_module.AGENT_SYSTEM_PROMPT,
+    }
+    assert conversation[1] == {"role": "user", "content": "first question"}
+    assert conversation[2]["role"] == "assistant"
+    assert conversation[2]["tool_calls"][0]["function"]["name"] == "search_docs"
+    assert conversation[3] == {
+        "role": "tool",
+        "tool_name": "search_docs",
+        "content": "some retrieved content",
+    }
+    assert conversation[4] == {"role": "assistant", "content": "first answer"}
+    assert conversation[5] == {"role": "user", "content": "second question"}
+
+    assert not any(
+        isinstance(turn.get("content"), str) and "TOOL_CALL" in turn["content"]
+        for turn in conversation
+    )
+
+
+def test_run_agent_turn_includes_summary_as_its_own_system_turn(
+    monkeypatch, mock_session
+):
+    monkeypatch.setattr(agent_module.mcp_client, "list_tools", list)
+
+    captured_messages = []
+
+    def fake_generate_turn(*, messages, tools, model=None):
+        captured_messages.append(messages)
+        return LLMTurn(content="ok", tool_calls=[])
+
+    monkeypatch.setattr(agent_module, "generate_turn", fake_generate_turn)
+
+    list(
+        agent_module.run_agent_turn(
+            mock_session, chat_id=1, summary="earlier context here", history=[]
+        )
+    )
+
+    conversation = captured_messages[0]
+
+    assert conversation[0]["role"] == "system"
+    assert conversation[1]["role"] == "system"
+    assert "earlier context here" in conversation[1]["content"]
+
+
 def test_run_agent_turn_streams_final_answer_when_no_tools_available(
     monkeypatch, mock_session
 ):
@@ -34,7 +196,9 @@ def test_run_agent_turn_streams_final_answer_when_no_tools_available(
     monkeypatch.setattr(
         agent_module,
         "generate_turn",
-        lambda *, messages, tools: LLMTurn(content="Hello there", tool_calls=[]),
+        lambda *, messages, tools, model=None: LLMTurn(
+            content="Hello there", tool_calls=[]
+        ),
     )
 
     events = [
@@ -58,7 +222,7 @@ def test_run_agent_turn_executes_a_tool_call_and_continues(monkeypatch, mock_ses
 
     captured_conversations = []
 
-    def fake_generate_turn(*, messages, tools):
+    def fake_generate_turn(*, messages, tools, model=None):
         captured_conversations.append([dict(m) for m in messages])
         if len(captured_conversations) == 1:
             return LLMTurn(
@@ -114,7 +278,7 @@ def test_run_agent_turn_reports_tool_failures_back_to_the_model(
 
     call_count = {"value": 0}
 
-    def fake_generate_turn(*, messages, tools):
+    def fake_generate_turn(*, messages, tools, model=None):
         call_count["value"] += 1
         if call_count["value"] == 1:
             return LLMTurn(
@@ -154,7 +318,7 @@ def test_run_agent_turn_forces_a_final_answer_at_the_iteration_cap(
 
     call_tool_invocations = []
 
-    def fake_generate_turn(*, messages, tools):
+    def fake_generate_turn(*, messages, tools, model=None):
         if tools is None:
             return LLMTurn(content="Final answer.", tool_calls=[])
         return LLMTurn(

@@ -19,6 +19,7 @@ export function makeChat(overrides: Partial<Chat> = {}): Chat {
   return {
     id: 1,
     title: "Test Chat",
+    mode: "chat",
     created_at: "2026-01-01T00:00:00Z",
     ...overrides,
   };

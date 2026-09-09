@@ -31,11 +31,16 @@ def _build_messages(
     return messages
 
 
-def _build_options(*, temperature: float | None) -> dict[str, float]:
-    options: dict[str, float] = {}
+def _build_options(
+    *, temperature: float | None, num_ctx: int | None = None
+) -> dict[str, float | int]:
+    options: dict[str, float | int] = {}
 
     if temperature is not None:
         options["temperature"] = temperature
+
+    if num_ctx is not None:
+        options["num_ctx"] = num_ctx
 
     return options
 
@@ -45,20 +50,25 @@ def generate_content(
     contents: str,
     system_instruction: str | None = None,
     temperature: float | None = None,
+    model: str | None = None,
 ) -> str:
+    resolved_model = model or conf.OLLAMA_MODEL
+
     response = httpx.post(
         f"{conf.OLLAMA_HOST}/api/chat",
         json={
-            "model": conf.OLLAMA_MODEL,
+            "model": resolved_model,
             "messages": _build_messages(
                 contents=contents, system_instruction=system_instruction
             ),
             "stream": False,
-            "options": _build_options(temperature=temperature),
+            "options": _build_options(
+                temperature=temperature, num_ctx=conf.OLLAMA_NUM_CTX
+            ),
         },
         timeout=conf.OLLAMA_TIMEOUT,
     )
-    raise_for_ollama_status(response, conf.OLLAMA_MODEL)
+    raise_for_ollama_status(response, resolved_model)
 
     text = response.json().get("message", {}).get("content", "")
 
@@ -73,21 +83,26 @@ def stream_content(
     contents: str,
     system_instruction: str | None = None,
     temperature: float | None = None,
+    model: str | None = None,
 ) -> Iterator[str]:
+    resolved_model = model or conf.OLLAMA_MODEL
+
     with httpx.stream(
         "POST",
         f"{conf.OLLAMA_HOST}/api/chat",
         json={
-            "model": conf.OLLAMA_MODEL,
+            "model": resolved_model,
             "messages": _build_messages(
                 contents=contents, system_instruction=system_instruction
             ),
             "stream": True,
-            "options": _build_options(temperature=temperature),
+            "options": _build_options(
+                temperature=temperature, num_ctx=conf.OLLAMA_NUM_CTX
+            ),
         },
         timeout=conf.OLLAMA_TIMEOUT,
     ) as response:
-        raise_for_ollama_status(response, conf.OLLAMA_MODEL)
+        raise_for_ollama_status(response, resolved_model)
 
         for line in response.iter_lines():
             if not line:
@@ -155,12 +170,15 @@ def generate_turn(
     messages: list[dict[str, Any]],
     tools: list[ToolDefinition] | None = None,
     temperature: float | None = None,
+    model: str | None = None,
 ) -> LLMTurn:
+    resolved_model = model or conf.OLLAMA_MODEL
+
     payload: dict[str, Any] = {
-        "model": conf.OLLAMA_MODEL,
+        "model": resolved_model,
         "messages": messages,
         "stream": False,
-        "options": _build_options(temperature=temperature),
+        "options": _build_options(temperature=temperature, num_ctx=conf.OLLAMA_NUM_CTX),
     }
 
     if tools:
@@ -171,7 +189,7 @@ def generate_turn(
         json=payload,
         timeout=conf.OLLAMA_TIMEOUT,
     )
-    raise_for_ollama_status(response, conf.OLLAMA_MODEL)
+    raise_for_ollama_status(response, resolved_model)
 
     message = response.json().get("message", {})
 

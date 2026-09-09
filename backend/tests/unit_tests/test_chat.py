@@ -65,8 +65,69 @@ def test_create_chat_adds_and_flushes(mock_session):
     chat = chat_module.create_chat(mock_session, title="New Chat")
 
     assert chat.title == "New Chat"
+    assert chat.mode == "chat"
     mock_session.add.assert_called_once_with(chat)
     mock_session.flush.assert_called_once()
+
+
+def test_create_chat_persists_agent_mode_when_requested(mock_session):
+    chat = chat_module.create_chat(mock_session, title="New Chat", mode="agent")
+
+    assert chat.mode == "agent"
+
+
+def test_stream_chat_msg_uses_plain_reply_for_chat_mode(
+    monkeypatch, session_builder, patch_db_session, chat_factory, message_factory
+):
+    chat = chat_factory(1, mode="chat")
+    session = session_builder(chat=chat, messages=[], summary=None)
+    patch_db_session(session)
+
+    plain_reply_called = {"value": False}
+    agent_turn_called = {"value": False}
+
+    def fake_stream_plain_reply(db, chat_id, summary, active_messages):
+        plain_reply_called["value"] = True
+        yield format_sse_event("chunk", {"text": "hi"})
+
+    def fake_run_agent_turn(db, chat_id, summary, active_messages):
+        agent_turn_called["value"] = True
+        yield format_sse_event("chunk", {"text": "should not run"})
+
+    monkeypatch.setattr(chat_module, "_stream_plain_reply", fake_stream_plain_reply)
+    monkeypatch.setattr(chat_module, "run_agent_turn", fake_run_agent_turn)
+
+    list(chat_module.stream_chat_msg(chat_id=1, msg="hi"))
+
+    assert plain_reply_called["value"] is True
+    assert agent_turn_called["value"] is False
+
+
+def test_stream_chat_msg_uses_agent_turn_for_agent_mode(
+    monkeypatch, session_builder, patch_db_session, chat_factory, message_factory
+):
+    chat = chat_factory(1, mode="agent")
+    session = session_builder(chat=chat, messages=[], summary=None)
+    patch_db_session(session)
+
+    plain_reply_called = {"value": False}
+    agent_turn_called = {"value": False}
+
+    def fake_stream_plain_reply(db, chat_id, summary, active_messages):
+        plain_reply_called["value"] = True
+        yield format_sse_event("chunk", {"text": "should not run"})
+
+    def fake_run_agent_turn(db, chat_id, summary, active_messages):
+        agent_turn_called["value"] = True
+        yield format_sse_event("chunk", {"text": "hi"})
+
+    monkeypatch.setattr(chat_module, "_stream_plain_reply", fake_stream_plain_reply)
+    monkeypatch.setattr(chat_module, "run_agent_turn", fake_run_agent_turn)
+
+    list(chat_module.stream_chat_msg(chat_id=1, msg="hi"))
+
+    assert agent_turn_called["value"] is True
+    assert plain_reply_called["value"] is False
 
 
 def test_generate_temporary_chat_title_collapses_whitespace():

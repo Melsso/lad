@@ -4,7 +4,6 @@ from collections.abc import Iterator
 from sqlalchemy.orm import Session
 
 from lad.core.db import get_db_session
-from lad.core.mcp import mcp_client
 from lad.core.sse import format_sse_event
 from lad.helpers.agent import run_agent_turn
 from lad.helpers.llm import generate_response_stream, generate_summary
@@ -37,8 +36,8 @@ def get_chat(db: Session, chat_id: int) -> Chat | None:
     return db.query(Chat).filter(Chat.id == chat_id).first()
 
 
-def create_chat(db: Session, title: str) -> Chat:
-    chat = Chat(title=title)
+def create_chat(db: Session, title: str, mode: str = "chat") -> Chat:
+    chat = Chat(title=title, mode=mode)
 
     db.add(chat)
     db.flush()
@@ -152,7 +151,9 @@ def _stream_plain_reply(
     yield sse_event_for_message("done", assistant_message)
 
 
-def _stream_and_persist_reply(db: Session, chat_id: int) -> Iterator[str]:
+def _stream_and_persist_reply(db: Session, chat: Chat) -> Iterator[str]:
+    chat_id = chat.id
+
     summary = get_chat_summary(db=db, chat_id=chat_id)
     active_messages = get_messages_after_summary(
         db=db,
@@ -179,7 +180,7 @@ def _stream_and_persist_reply(db: Session, chat_id: int) -> Iterator[str]:
 
     summary_content = summary.content if summary else None
 
-    if mcp_client.list_tools():
+    if chat.mode == "agent":
         yield from run_agent_turn(db, chat_id, summary_content, active_messages)
     else:
         yield from _stream_plain_reply(db, chat_id, summary_content, active_messages)
@@ -204,7 +205,7 @@ def stream_chat_msg(chat_id: int, msg: str) -> Iterator[str]:
             )
             db.commit()
 
-            yield from _stream_and_persist_reply(db, chat_id)
+            yield from _stream_and_persist_reply(db, chat)
 
         except Exception as exc:
             db.rollback()
@@ -248,7 +249,7 @@ def stream_chat_retry(chat_id: int) -> Iterator[str]:
                 yield format_sse_event("error", {"detail": "Nothing to retry"})
                 return
 
-            yield from _stream_and_persist_reply(db, chat_id)
+            yield from _stream_and_persist_reply(db, chat)
 
         except Exception as exc:
             db.rollback()
