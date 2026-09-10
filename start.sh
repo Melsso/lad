@@ -59,6 +59,7 @@ if curl -s -o /dev/null http://localhost:11434; then
   echo "Ollama already running."
 else
   echo "Starting Ollama..."
+  export OLLAMA_MAX_LOADED_MODELS=1
   nohup ollama serve >/tmp/ollama.log 2>&1 &
   echo $! >"$OLLAMA_PID_FILE"
 

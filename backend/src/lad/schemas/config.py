@@ -13,6 +13,9 @@ class Settings(BaseSettings):
     SUMMARY_THRESHOLD: int = 20
     RECENT_MESSAGES_TO_KEEP: int = 8
 
+    AGENT_SUMMARY_THRESHOLD: int = 8
+    AGENT_RECENT_MESSAGES_TO_KEEP: int = 4
+
     OLLAMA_HOST: str = "http://host.docker.internal:11434"
     OLLAMA_MODEL: str = "qwen3:8b"
     OLLAMA_AGENT_MODEL: str = "gemma4:12b"
@@ -22,7 +25,9 @@ class Settings(BaseSettings):
     EMBEDDING_DIM: int = 768
 
     MCP_SERVERS: str = "[]"
-    MAX_TOOL_ITERATIONS: int = 5
+    MAX_TOOL_ITERATIONS: int = 3
+
+    TAVILY_API_KEY: str = ""
 
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8")
 

@@ -83,7 +83,10 @@ def _format_messages(messages: Sequence[Messages]) -> str:
 
 
 def generate_summary(
-    *, existing_summary: str | None, messages: Sequence[Messages]
+    *,
+    existing_summary: str | None,
+    messages: Sequence[Messages],
+    model: str | None = None,
 ) -> str:
     if not messages:
         return existing_summary or ""
@@ -109,6 +112,7 @@ Create the updated conversation summary now.
         contents=prompt,
         system_instruction=SUMMARY_SYSTEM_PROMPT,
         temperature=0.2,
+        model=model,
     )
 
 

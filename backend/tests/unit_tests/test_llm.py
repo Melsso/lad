@@ -449,7 +449,9 @@ def test_generate_summary_returns_empty_string_when_nothing_exists():
 def test_generate_summary_calls_generate_content(monkeypatch, message_factory):
     captured = {}
 
-    def fake_generate_content(*, contents, system_instruction=None, temperature=None):
+    def fake_generate_content(
+        *, contents, system_instruction=None, temperature=None, model=None
+    ):
         captured["contents"] = contents
         captured["system_instruction"] = system_instruction
         captured["temperature"] = temperature

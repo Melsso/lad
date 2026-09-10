@@ -1,8 +1,8 @@
 import ast
 from pathlib import Path
 
-GENERIC_CHUNK_SIZE = 1500
-GENERIC_CHUNK_OVERLAP = 200
+GENERIC_CHUNK_SIZE = 800
+GENERIC_CHUNK_OVERLAP = 100
 
 _CHUNKABLE_NODE_TYPES = (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)
 
