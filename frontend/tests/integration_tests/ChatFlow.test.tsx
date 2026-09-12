@@ -69,12 +69,10 @@ describe("chat flow (real components + faked network)", () => {
     await user.type(input, "Hello there");
     await user.click(screen.getByRole("button", { name: "Send" }));
 
-    expect(
-      await screen.findByText("Hello there", {}, { timeout: 7000 }),
-    ).toBeInTheDocument();
-    expect(
-      await screen.findByText("General Kenobi", {}, { timeout: 7000 }),
-    ).toBeInTheDocument();
+    const articles = screen.getAllByRole("article");
+
+    expect(within(articles[0]).getByText("Hello there")).toBeInTheDocument();
+    expect(within(articles[1]).getByText("General Kenobi")).toBeInTheDocument();
   });
 
   it("detects a dangling user message and completes it via retry", async () => {
