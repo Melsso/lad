@@ -29,6 +29,8 @@ class Settings(BaseSettings):
 
     TAVILY_API_KEY: str = ""
 
+    SANDBOX_URL: str = "http://sandbox:8000"
+
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8")
 
 

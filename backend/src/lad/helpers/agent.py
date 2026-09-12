@@ -33,9 +33,11 @@ def _chunk_text(text: str) -> Iterator[str]:
         yield text[start : start + CHUNK_SIZE]
 
 
-def _call_tool(name: str, arguments: dict[str, Any]) -> str:
+def _call_tool(name: str, arguments: dict[str, Any], chat_id: int) -> str:
     try:
-        return mcp_client.call_tool(name, arguments)
+        return mcp_client.call_tool(
+            name, arguments, extra_env={"LAD_CHAT_ID": str(chat_id)}
+        )
     except Exception as exc:
         logger.exception(
             "lad_event",
@@ -125,7 +127,7 @@ def run_agent_turn(
             db.commit()
             yield sse_event_for_message("tool_call", tool_call_row)
 
-            result_content = _call_tool(call.name, call.arguments)
+            result_content = _call_tool(call.name, call.arguments, chat_id)
 
             tool_result_row = create_tool_result_message(
                 db=db,

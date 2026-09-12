@@ -17,12 +17,28 @@ services:
       dockerfile: Dockerfile
     env_file:
       - ./backend/.env
+    volumes:
+      - ./chat_sandboxes:/data/chat_sandboxes
     networks:
       - lad_network
+      - sandbox_network
     expose:
       - "8000"
     labels:
       service: "api"
+
+  sandbox:
+    build:
+      context: ./sandbox
+      dockerfile: Dockerfile
+    volumes:
+      - ./chat_sandboxes:/data/chat_sandboxes
+    networks:
+      - sandbox_network
+    mem_limit: 512m
+    cpus: 0.5
+    labels:
+      service: "sandbox"
 
 volumes:
   postgres_data:
@@ -30,3 +46,4 @@ volumes:
 networks:
   lad_network:
     external: true
+  sandbox_network: {}

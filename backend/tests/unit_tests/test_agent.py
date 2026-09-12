@@ -238,21 +238,28 @@ def test_run_agent_turn_executes_a_tool_call_and_continues(monkeypatch, mock_ses
         return LLMTurn(content="It's 22°C in New York.", tool_calls=[])
 
     monkeypatch.setattr(agent_module, "generate_turn", fake_generate_turn)
-    monkeypatch.setattr(
-        agent_module.mcp_client,
-        "call_tool",
-        lambda name, arguments: "22°C",
-    )
+
+    call_tool_calls = []
+
+    def fake_call_tool(name, arguments, extra_env=None):
+        call_tool_calls.append((name, arguments, extra_env))
+        return "22°C"
+
+    monkeypatch.setattr(agent_module.mcp_client, "call_tool", fake_call_tool)
 
     events = [
         _parse_sse(raw)
         for raw in agent_module.run_agent_turn(
-            mock_session, chat_id=1, summary=None, history=[]
+            mock_session, chat_id=42, summary=None, history=[]
         )
     ]
 
     event_names = [event for event, _ in events]
     assert event_names == ["tool_call", "tool_result", "chunk", "done"]
+
+    assert len(call_tool_calls) == 1
+    _, _, used_extra_env = call_tool_calls[0]
+    assert used_extra_env == {"LAD_CHAT_ID": "42"}
 
     tool_call_payload = events[0][1]
     assert tool_call_payload["tool_name"] == "get_temperature"
@@ -289,7 +296,7 @@ def test_run_agent_turn_reports_tool_failures_back_to_the_model(
             )
         return LLMTurn(content="Sorry, I couldn't check the weather.", tool_calls=[])
 
-    def failing_call_tool(name, arguments):
+    def failing_call_tool(name, arguments, extra_env=None):
         raise RuntimeError("boom")
 
     monkeypatch.setattr(agent_module, "generate_turn", fake_generate_turn)
@@ -328,7 +335,7 @@ def test_run_agent_turn_forces_a_final_answer_at_the_iteration_cap(
             ],
         )
 
-    def fake_call_tool(name, arguments):
+    def fake_call_tool(name, arguments, extra_env=None):
         call_tool_invocations.append((name, arguments))
         return "22°C"
 

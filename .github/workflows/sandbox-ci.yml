@@ -1,32 +1,24 @@
-name: Backend CI
+name: Sandbox CI
 
 on:
   push:
     branches: [dev]
     paths:
-      - "backend/**"
-      - ".github/workflows/backend-ci.yml"
+      - "sandbox/**"
+      - ".github/workflows/sandbox-ci.yml"
   pull_request:
     branches: [dev]
     paths:
-      - "backend/**"
-      - ".github/workflows/backend-ci.yml"
+      - "sandbox/**"
+      - ".github/workflows/sandbox-ci.yml"
 
 defaults:
   run:
-    working-directory: backend
+    working-directory: sandbox
 
 jobs:
   lint-and-test:
     runs-on: ubuntu-latest
-
-    env:
-      DB_USER: ci
-      DB_PASSWORD: ci
-      DB_NAME: ci
-      DB_HOST: localhost
-      DB_PORT: "5432"
-
 
     steps:
       - name: Checkout
@@ -48,9 +40,9 @@ jobs:
         uses: actions/cache@v4
         with:
           path: .venv
-          key: poetry-${{ runner.os }}-backend-${{ hashFiles('backend/poetry.lock') }}
+          key: poetry-${{ runner.os }}-sandbox-${{ hashFiles('sandbox/poetry.lock') }}
           restore-keys: |
-            poetry-${{ runner.os }}-backend-
+            poetry-${{ runner.os }}-sandbox-
 
       - name: Install Dependencies
         run: poetry install --no-interaction
@@ -61,8 +53,5 @@ jobs:
       - name: Type Check
         run: poetry run mypy .
 
-      - name: Unit Tests
-        run: poetry run pytest tests/unit_tests --cov=lad --cov-report=term-missing
-      
-      - name: Integration Tests
-        run: poetry run pytest tests/integration_tests --cov=lad --cov-report=term-missing
+      - name: Tests
+        run: poetry run pytest tests/ --cov=sandbox --cov-report=term-missing

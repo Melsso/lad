@@ -89,22 +89,35 @@ class MCPClient:
 
         return definitions
 
-    def call_tool(self, name: str, arguments: dict[str, Any]) -> str:
+    def call_tool(
+        self,
+        name: str,
+        arguments: dict[str, Any],
+        extra_env: dict[str, str] | None = None,
+    ) -> str:
         server = self._tool_owners.get(name)
 
         if server is None:
             raise ValueError(f"Unknown MCP tool: {name}")
 
         try:
-            return asyncio.run(self._call_tool_async(server, name, arguments))
+            return asyncio.run(
+                self._call_tool_async(server, name, arguments, extra_env)
+            )
         except BaseExceptionGroup as group:
             raise RuntimeError(_describe_exception(group)) from group
 
     async def _call_tool_async(
-        self, server: MCPServerConfig, name: str, arguments: dict[str, Any]
+        self,
+        server: MCPServerConfig,
+        name: str,
+        arguments: dict[str, Any],
+        extra_env: dict[str, str] | None = None,
     ) -> str:
         params = StdioServerParameters(
-            command=server.command, args=server.args, env=dict(os.environ)
+            command=server.command,
+            args=server.args,
+            env=dict(os.environ) | (extra_env or {}),
         )
 
         async with (

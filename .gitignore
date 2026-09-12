@@ -2,6 +2,7 @@ __pycache__/
 .env
 .db_env
 .ollama.pid
+chat_sandboxes/
 
 .ruff_cache/
 .mypy_cache/
@@ -11,6 +12,7 @@ __pycache__/
 node_modules/
 dist/
 coverage/
+.venv/
 
 .idea/
 .vscode/

@@ -72,6 +72,58 @@ def test_list_tools_unwraps_exception_group_into_a_readable_runtime_error(
         client.list_tools()
 
 
+def test_call_tool_merges_extra_env_into_subprocess_environment(monkeypatch):
+    captured_params = {}
+
+    class FakeStdioServerParameters:
+        def __init__(self, **kwargs):
+            captured_params.update(kwargs)
+
+    def fake_stdio_client(params):
+        raise RuntimeError("stop here, params already captured")
+
+    monkeypatch.setattr(mcp_module, "StdioServerParameters", FakeStdioServerParameters)
+    monkeypatch.setattr(mcp_module, "stdio_client", fake_stdio_client)
+
+    client = mcp_module.MCPClient(servers=[])
+    client._tool_owners["run_command"] = mcp_module.MCPServerConfig(
+        name="sandbox", command="python", args=["-m", "lad.tools.sandbox_server"]
+    )
+
+    with pytest.raises(RuntimeError, match="stop here"):
+        client.call_tool(
+            "run_command",
+            {"command": "echo hi"},
+            extra_env={"LAD_CHAT_ID": "7"},
+        )
+
+    assert captured_params["env"]["LAD_CHAT_ID"] == "7"
+
+
+def test_call_tool_works_without_extra_env(monkeypatch):
+    captured_params = {}
+
+    class FakeStdioServerParameters:
+        def __init__(self, **kwargs):
+            captured_params.update(kwargs)
+
+    def fake_stdio_client(params):
+        raise RuntimeError("stop here, params already captured")
+
+    monkeypatch.setattr(mcp_module, "StdioServerParameters", FakeStdioServerParameters)
+    monkeypatch.setattr(mcp_module, "stdio_client", fake_stdio_client)
+
+    client = mcp_module.MCPClient(servers=[])
+    client._tool_owners["search_docs"] = mcp_module.MCPServerConfig(
+        name="rag", command="python", args=["-m", "lad.tools.rag_server"]
+    )
+
+    with pytest.raises(RuntimeError, match="stop here"):
+        client.call_tool("search_docs", {"query": "hi"})
+
+    assert "LAD_CHAT_ID" not in captured_params["env"]
+
+
 def test_load_server_configs_returns_empty_list_for_blank_string():
     assert mcp_module.load_server_configs("") == []
     assert mcp_module.load_server_configs("   ") == []
