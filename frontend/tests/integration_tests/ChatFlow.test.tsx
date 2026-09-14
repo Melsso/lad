@@ -137,4 +137,60 @@ describe("chat flow (real components + faked network)", () => {
       expect(screen.getByText(/LAD is listening/)).toBeInTheDocument(),
     );
   });
+
+  it("shows the file picker for an existing agent-mode chat and sends attached files", async () => {
+    const user = userEvent.setup();
+
+    server.use(
+      http.get("/api/chat/messages", () =>
+        HttpResponse.json([
+          makeMessage({ id: 1, role: "user", content: "hi there" }),
+        ]),
+      ),
+      http.get("/api/chat/:chatId", ({ params }) =>
+        HttpResponse.json(
+          makeChat({ id: Number(params.chatId), mode: "agent" }),
+        ),
+      ),
+      http.post("/api/chat/msg/stream", () =>
+        sseResponse([
+          sseEvent(
+            "done",
+            makeMessage({
+              id: 2,
+              role: "assistant",
+              content: "got it",
+            }),
+          ),
+        ]),
+      ),
+    );
+
+    renderWithRouter(<ChatPage />, "/chat/1");
+
+    const attachButton = await screen.findByRole("button", {
+      name: "Attach files",
+    });
+
+    const file = new File(["print(1)"], "main.py", { type: "text/plain" });
+    const fileInput = document.querySelector(
+      'input[type="file"]',
+    ) as HTMLInputElement;
+    await user.upload(fileInput, file);
+
+    expect(attachButton).toBeInTheDocument();
+    expect(screen.getByText("main.py")).toBeInTheDocument();
+
+    const input = screen.getByPlaceholderText("Message LAD...");
+    await user.type(input, "analyze this");
+    await user.click(screen.getByRole("button", { name: "Send" }));
+
+    expect(await screen.findByText("got it")).toBeInTheDocument();
+
+    const articles = screen.getAllByRole("article");
+    const sentMessage = articles.find((article) =>
+      within(article).queryByText("analyze this"),
+    ) as HTMLElement;
+    expect(within(sentMessage).getByText("main.py")).toBeInTheDocument();
+  });
 });

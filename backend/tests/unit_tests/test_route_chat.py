@@ -142,10 +142,52 @@ def test_get_chat_messages_db_error(monkeypatch, client):
     assert response.status_code == 500
 
 
+def test_get_chat_endpoint_success(monkeypatch, client):
+    chat = MagicMock(
+        id=1, title="hello", mode="chat", created_at="2026-01-01T00:00:00+00:00"
+    )
+    monkeypatch.setattr(chat_routes, "get_chat", lambda db, chat_id: chat)
+
+    response = client.get("/chat/1")
+
+    assert response.status_code == 200
+    assert response.json()["mode"] == "chat"
+
+
+def test_get_chat_endpoint_not_found(monkeypatch, client):
+    monkeypatch.setattr(chat_routes, "get_chat", lambda db, chat_id: None)
+
+    response = client.get("/chat/999")
+
+    assert response.status_code == 404
+
+
+def test_get_chat_endpoint_db_error(monkeypatch, client):
+    def raise_error(db, chat_id):
+        raise SQLAlchemyError("boom")
+
+    monkeypatch.setattr(chat_routes, "get_chat", raise_error)
+
+    response = client.get("/chat/1")
+
+    assert response.status_code == 500
+
+
+def test_get_chat_endpoint_does_not_shadow_messages_route(monkeypatch, client):
+    monkeypatch.setattr(chat_routes, "get_chat_messages", lambda db, chat_id: [])
+
+    response = client.get("/chat/messages", params={"chat_id": 1})
+
+    assert response.status_code == 200
+    assert response.json() == []
+
+
 def test_stream_msg_chat_not_found(monkeypatch, client):
     monkeypatch.setattr(chat_routes, "get_chat", lambda db, chat_id: None)
 
-    response = client.post("/chat/msg/stream", json={"chat_id": 999, "msg": "hi"})
+    response = client.post(
+        "/chat/msg/stream", data={"chat_id": 999, "msg": "hi"}, files=[]
+    )
 
     assert response.status_code == 404
 
@@ -156,7 +198,9 @@ def test_stream_msg_db_error_on_lookup(monkeypatch, client):
 
     monkeypatch.setattr(chat_routes, "get_chat", raise_error)
 
-    response = client.post("/chat/msg/stream", json={"chat_id": 1, "msg": "hi"})
+    response = client.post(
+        "/chat/msg/stream", data={"chat_id": 1, "msg": "hi"}, files=[]
+    )
 
     assert response.status_code == 500
 
@@ -165,18 +209,106 @@ def test_stream_msg_success_returns_sse_stream(monkeypatch, client):
     chat = MagicMock(id=1)
     monkeypatch.setattr(chat_routes, "get_chat", lambda db, chat_id: chat)
 
-    def fake_stream(chat_id, msg):
+    def fake_stream(chat_id, msg, attached_filenames=None):
         yield 'event: chunk\ndata: {"text": "hi"}\n\n'
         yield 'event: done\ndata: {"id": 1}\n\n'
 
     monkeypatch.setattr(chat_routes, "stream_chat_msg", fake_stream)
 
-    response = client.post("/chat/msg/stream", json={"chat_id": 1, "msg": "hi"})
+    response = client.post(
+        "/chat/msg/stream", data={"chat_id": 1, "msg": "hi"}, files=[]
+    )
 
     assert response.status_code == 200
     assert response.headers["content-type"].startswith("text/event-stream")
     assert "event: chunk" in response.text
     assert "event: done" in response.text
+
+
+def test_stream_msg_rejects_too_many_files(monkeypatch, client):
+    chat = MagicMock(id=1)
+    monkeypatch.setattr(chat_routes, "get_chat", lambda db, chat_id: chat)
+
+    def raise_too_many(files):
+        raise ValueError("Too many files attached")
+
+    monkeypatch.setattr(chat_routes, "validate_uploads", raise_too_many)
+
+    response = client.post(
+        "/chat/msg/stream",
+        data={"chat_id": 1, "msg": "hi"},
+        files=[("files", ("a.txt", b"x", "text/plain"))],
+    )
+
+    assert response.status_code == 400
+    assert "Too many files" in response.json()["detail"]
+
+
+def test_stream_msg_rejects_invalid_extension(monkeypatch, client):
+    chat = MagicMock(id=1)
+    monkeypatch.setattr(chat_routes, "get_chat", lambda db, chat_id: chat)
+
+    def raise_bad_extension(files):
+        raise ValueError("File type '.exe' is not allowed: virus.exe")
+
+    monkeypatch.setattr(chat_routes, "validate_uploads", raise_bad_extension)
+
+    response = client.post(
+        "/chat/msg/stream",
+        data={"chat_id": 1, "msg": "hi"},
+        files=[("files", ("virus.exe", b"x", "application/octet-stream"))],
+    )
+
+    assert response.status_code == 400
+    assert "not allowed" in response.json()["detail"]
+
+
+def test_stream_msg_saves_uploaded_files_and_passes_filenames(monkeypatch, client):
+    chat = MagicMock(id=1)
+    monkeypatch.setattr(chat_routes, "get_chat", lambda db, chat_id: chat)
+    monkeypatch.setattr(chat_routes, "validate_uploads", lambda files: None)
+    monkeypatch.setattr(chat_routes, "save_uploads", lambda chat_id, files: ["main.py"])
+
+    captured = {}
+
+    def fake_stream(chat_id, msg, attached_filenames=None):
+        captured["attached_filenames"] = attached_filenames
+        yield 'event: done\ndata: {"id": 1}\n\n'
+
+    monkeypatch.setattr(chat_routes, "stream_chat_msg", fake_stream)
+
+    response = client.post(
+        "/chat/msg/stream",
+        data={"chat_id": 1, "msg": "hi"},
+        files=[("files", ("main.py", b"print(1)", "text/plain"))],
+    )
+
+    assert response.status_code == 200
+    assert captured["attached_filenames"] == ["main.py"]
+
+
+def test_stream_msg_ignores_empty_file_part(monkeypatch, client):
+    chat = MagicMock(id=1)
+    monkeypatch.setattr(chat_routes, "get_chat", lambda db, chat_id: chat)
+
+    validate_calls = []
+    monkeypatch.setattr(
+        chat_routes, "validate_uploads", lambda files: validate_calls.append(files)
+    )
+
+    def fake_stream(chat_id, msg, attached_filenames=None):
+        yield 'event: done\ndata: {"id": 1}\n\n'
+
+    monkeypatch.setattr(chat_routes, "stream_chat_msg", fake_stream)
+
+    response = client.post(
+        "/chat/msg/stream",
+        data={"chat_id": 1, "msg": "hi"},
+        files=[("files", ("", b"", "application/octet-stream"))],
+    )
+
+    assert response.status_code == 200
+    assert validate_calls == [[]]
 
 
 def test_retry_msg_chat_not_found(monkeypatch, client):

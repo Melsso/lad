@@ -1,4 +1,4 @@
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 
 import { AppLayout } from "../components/layout/AppLayout";
@@ -7,12 +7,43 @@ import { ChatWindow } from "../components/chat/ChatWindow";
 import { MessageInput } from "../components/chat/MessageInput";
 import { useChatStream } from "../hooks/useChatStream";
 import { useFavicon } from "../hooks/useFavicon";
+import { getChat } from "../services/chat";
 
 export function ChatPage() {
   const { chatId } = useParams();
   const navigate = useNavigate();
   const selectedChatId = chatId ? Number(chatId) : null;
   const [newChatMode, setNewChatMode] = useState<"chat" | "agent">("chat");
+  const [existingChatMode, setExistingChatMode] = useState<
+    "chat" | "agent" | null
+  >(null);
+
+  useEffect(() => {
+    setExistingChatMode(null);
+
+    if (selectedChatId === null) {
+      return;
+    }
+
+    let cancelled = false;
+
+    getChat(selectedChatId)
+      .then((chat) => {
+        if (!cancelled) {
+          setExistingChatMode(chat.mode);
+        }
+      })
+      .catch(() => {
+        // mode lookup failing just leaves the file picker hidden; the rest
+        // of the chat still loads normally via useChatStream
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedChatId]);
+
+  const activeMode = selectedChatId === null ? newChatMode : existingChatMode;
 
   const handleChatCreated = useCallback(
     (newChatId: number) => {
@@ -66,8 +97,11 @@ export function ChatPage() {
         )}
 
         <MessageInput
-          onSend={(content) => sendMessage(content, newChatMode)}
+          onSend={(content, files) =>
+            sendMessage(content, activeMode ?? "chat", files)
+          }
           isStreaming={isStreaming}
+          mode={activeMode ?? undefined}
         />
       </div>
     </AppLayout>

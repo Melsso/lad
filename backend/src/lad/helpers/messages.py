@@ -16,6 +16,7 @@ def create_message(
     tool_call_id: str | None = None,
     tool_name: str | None = None,
     tool_arguments: str | None = None,
+    attached_files: list[str] | None = None,
 ) -> Messages:
     message = Messages(
         chat_id=chat_id,
@@ -24,6 +25,7 @@ def create_message(
         tool_call_id=tool_call_id,
         tool_name=tool_name,
         tool_arguments=tool_arguments,
+        attached_files=json.dumps(attached_files) if attached_files else None,
     )
 
     db.add(message)

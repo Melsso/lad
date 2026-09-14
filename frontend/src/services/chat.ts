@@ -12,6 +12,10 @@ export function getChats(): Promise<Chat[]> {
   return api<Chat[]>("/app/");
 }
 
+export function getChat(chatId: number): Promise<Chat> {
+  return api<Chat>(`/chat/${chatId}`);
+}
+
 export function getChatMessages(chatId: number): Promise<ChatMessage[]> {
   return api<ChatMessage[]>(`/chat/messages?chat_id=${chatId}`);
 }
@@ -79,7 +83,7 @@ function processEvent(rawEvent: string, handlers: StreamMessageHandlers) {
 
 async function consumeSseStream(
   url: string,
-  body: unknown,
+  body: FormData | Record<string, unknown>,
   handlers: StreamMessageHandlers,
 ): Promise<void> {
   let response: Response;
@@ -87,10 +91,12 @@ async function consumeSseStream(
   try {
     response = await fetch(url, {
       method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify(body),
+      ...(body instanceof FormData
+        ? { body }
+        : {
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(body),
+          }),
       signal: handlers.signal,
     });
   } catch (err) {
@@ -147,7 +153,19 @@ export function streamMessage(
   request: SendMessageRequest,
   handlers: StreamMessageHandlers,
 ): Promise<void> {
-  return consumeSseStream(`${API_BASE_URL}/chat/msg/stream`, request, handlers);
+  const formData = new FormData();
+  formData.set("chat_id", String(request.chat_id));
+  formData.set("msg", request.msg);
+
+  for (const file of request.files ?? []) {
+    formData.append("files", file);
+  }
+
+  return consumeSseStream(
+    `${API_BASE_URL}/chat/msg/stream`,
+    formData,
+    handlers,
+  );
 }
 
 export function retryMessage(

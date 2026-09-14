@@ -1,10 +1,11 @@
 import logging
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Depends, Form, HTTPException, Request
 from fastapi.responses import StreamingResponse
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
+from starlette.datastructures import UploadFile
 
 from lad.core.db import get_db
 from lad.helpers.chat import (
@@ -17,12 +18,12 @@ from lad.helpers.chat import (
     stream_chat_retry,
     update_chat_title,
 )
+from lad.helpers.uploads import save_uploads, validate_uploads
 from lad.schemas.chat import (
     ChatMessageResponse,
     ChatResponse,
     CreateChatRequest,
     RetryMessageRequest,
-    SendMessageRequest,
     UpdateChatTitleRequest,
 )
 
@@ -194,14 +195,51 @@ async def chat_messages(
         ) from exc
 
 
+@chat_router.get("/{chat_id}", response_model=ChatResponse)
+async def get_chat_endpoint(
+    request: Request, db: Annotated[Session, Depends(get_db)], chat_id: int
+):
+    try:
+        chat = get_chat(db=db, chat_id=chat_id)
+    except SQLAlchemyError as exc:
+        logger.exception(
+            "lad_event",
+            extra={
+                "event": "http_request",
+                "status": "internal_error",
+                "status_code": 500,
+                "path": request.url.path,
+                "method": request.method,
+                "context": {
+                    "location": "get_chat_endpoint",
+                    "error_type": type(exc).__name__,
+                    "error_message": str(exc),
+                },
+            },
+        )
+        raise HTTPException(
+            status_code=500,
+            detail="Database error while fetching chat",
+        ) from exc
+
+    if chat is None:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Chat {chat_id} does not exist",
+        )
+
+    return chat
+
+
 @chat_router.post("/msg/stream")
 async def stream_msg(
     request: Request,
     db: Annotated[Session, Depends(get_db)],
-    chat_request: SendMessageRequest,
+    chat_id: Annotated[int, Form()],
+    msg: Annotated[str, Form()],
 ):
     try:
-        chat = get_chat(db=db, chat_id=chat_request.chat_id)
+        chat = get_chat(db=db, chat_id=chat_id)
     except SQLAlchemyError as exc:
         logger.exception(
             "lad_event",
@@ -226,11 +264,28 @@ async def stream_msg(
     if chat is None:
         raise HTTPException(
             status_code=404,
-            detail=f"Chat {chat_request.chat_id} does not exist",
+            detail=f"Chat {chat_id} does not exist",
         )
 
+    uploaded_files = [
+        item
+        for item in (await request.form()).getlist("files")
+        if isinstance(item, UploadFile) and item.filename
+    ]
+
+    try:
+        validate_uploads(uploaded_files)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    attached_filenames = (
+        save_uploads(chat_id=chat_id, files=uploaded_files) if uploaded_files else []
+    )
+
     return StreamingResponse(
-        stream_chat_msg(chat_id=chat_request.chat_id, msg=chat_request.msg),
+        stream_chat_msg(
+            chat_id=chat_id, msg=msg, attached_filenames=attached_filenames
+        ),
         media_type="text/event-stream",
         headers={
             "Cache-Control": "no-cache",

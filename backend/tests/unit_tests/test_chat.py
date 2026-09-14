@@ -273,7 +273,7 @@ def test_stream_chat_msg_success_streams_and_persists(
         yield "Hel"
         yield "lo"
 
-    def fake_create_message(db, chat_id, role, content):
+    def fake_create_message(db, chat_id, role, content, attached_files=None):
         return message_factory(99, chat_id=chat_id, role=role, content=content)
 
     monkeypatch.setattr(
@@ -348,7 +348,7 @@ def test_stream_chat_msg_triggers_summarization(
         assert len(messages) == 8
         yield "ok"
 
-    def fake_create_message(db, chat_id, role, content):
+    def fake_create_message(db, chat_id, role, content, attached_files=None):
         return message_factory(99, chat_id=chat_id, role=role, content=content)
 
     monkeypatch.setattr(chat_module, "generate_summary", fake_generate_summary)

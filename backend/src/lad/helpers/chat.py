@@ -186,7 +186,9 @@ def _stream_and_persist_reply(db: Session, chat: Chat) -> Iterator[str]:
         yield from _stream_plain_reply(db, chat_id, summary_content, active_messages)
 
 
-def stream_chat_msg(chat_id: int, msg: str) -> Iterator[str]:
+def stream_chat_msg(
+    chat_id: int, msg: str, attached_filenames: list[str] | None = None
+) -> Iterator[str]:
     with get_db_session() as db:
         try:
             chat = get_chat(db=db, chat_id=chat_id)
@@ -202,6 +204,7 @@ def stream_chat_msg(chat_id: int, msg: str) -> Iterator[str]:
                 chat_id=chat_id,
                 role="user",
                 content=msg,
+                attached_files=attached_filenames,
             )
             db.commit()
 

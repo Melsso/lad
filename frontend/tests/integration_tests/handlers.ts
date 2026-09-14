@@ -21,6 +21,9 @@ export function sseResponse(events: string[]) {
 export const handlers = [
   http.get("/api/app/", () => HttpResponse.json([])),
   http.get("/api/chat/messages", () => HttpResponse.json([])),
+  http.get("/api/chat/:chatId", ({ params }) =>
+    HttpResponse.json(makeChat({ id: Number(params.chatId) })),
+  ),
   http.post("/api/chat/create", async ({ request }) => {
     const body = (await request.json()) as { title?: string };
     return HttpResponse.json(

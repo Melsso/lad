@@ -1,7 +1,8 @@
+import json
 from datetime import datetime
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, field_validator
 
 
 class ChatResponse(BaseModel):
@@ -23,15 +24,18 @@ class ChatMessageResponse(BaseModel):
     tool_call_id: str | None = None
     tool_name: str | None = None
     tool_arguments: str | None = None
+    attached_files: list[str] | None = None
 
     created_at: datetime
 
     model_config = ConfigDict(from_attributes=True)
 
-
-class SendMessageRequest(BaseModel):
-    chat_id: int
-    msg: str
+    @field_validator("attached_files", mode="before")
+    @classmethod
+    def parse_attached_files(cls, value: object) -> object:
+        if isinstance(value, str):
+            return json.loads(value)
+        return value
 
 
 class CreateChatRequest(BaseModel):

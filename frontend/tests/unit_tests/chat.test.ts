@@ -3,6 +3,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   createChat,
   deleteChat,
+  getChat,
   getChatMessages,
   getChats,
   retryMessage,
@@ -28,6 +29,14 @@ describe("chat CRUD functions", () => {
     await getChats();
 
     expect(mockedApi).toHaveBeenCalledWith("/app/");
+  });
+
+  it("getChat calls the chat-by-id endpoint", async () => {
+    mockedApi.mockResolvedValue({});
+
+    await getChat(42);
+
+    expect(mockedApi).toHaveBeenCalledWith("/chat/42");
   });
 
   it("getChatMessages includes the chat_id query param", async () => {
@@ -318,5 +327,45 @@ describe("streamMessage / retryMessage (SSE consumption)", () => {
     const [url, options] = fetchMock.mock.calls[0];
     expect(url).toBe("/api/chat/msg/retry");
     expect(JSON.parse(options.body)).toEqual({ chat_id: 5 });
+  });
+
+  it("streamMessage sends chat_id, msg, and files as multipart form data", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValue(createSseResponse([sseEvent("done", makeMessage())]));
+    vi.stubGlobal("fetch", fetchMock);
+
+    const file = new File(["print(1)"], "main.py", { type: "text/plain" });
+
+    await streamMessage(
+      { chat_id: 3, msg: "analyze this", files: [file] },
+      { onChunk: vi.fn(), onDone: vi.fn(), onError: vi.fn() },
+    );
+
+    const [url, options] = fetchMock.mock.calls[0];
+    expect(url).toBe("/api/chat/msg/stream");
+    expect(options.body).toBeInstanceOf(FormData);
+
+    const body = options.body as FormData;
+    expect(body.get("chat_id")).toBe("3");
+    expect(body.get("msg")).toBe("analyze this");
+    expect(body.getAll("files")).toEqual([file]);
+    expect(options.headers).toBeUndefined();
+  });
+
+  it("streamMessage omits the files field entirely when none are attached", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValue(createSseResponse([sseEvent("done", makeMessage())]));
+    vi.stubGlobal("fetch", fetchMock);
+
+    await streamMessage(
+      { chat_id: 1, msg: "hi" },
+      { onChunk: vi.fn(), onDone: vi.fn(), onError: vi.fn() },
+    );
+
+    const [, options] = fetchMock.mock.calls[0];
+    const body = options.body as FormData;
+    expect(body.getAll("files")).toEqual([]);
   });
 });

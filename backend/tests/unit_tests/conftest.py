@@ -45,6 +45,7 @@ def message_factory():
         tool_call_id=None,
         tool_name=None,
         tool_arguments=None,
+        attached_files=None,
     ):
         return Messages(
             id=message_id,
@@ -55,6 +56,7 @@ def message_factory():
             tool_call_id=tool_call_id,
             tool_name=tool_name,
             tool_arguments=tool_arguments,
+            attached_files=attached_files,
         )
 
     return _factory

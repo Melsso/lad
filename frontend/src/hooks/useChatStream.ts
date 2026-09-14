@@ -15,12 +15,21 @@ interface UseChatStreamResult {
   streamingText: string;
   isStreaming: boolean;
   error: string | null;
-  sendMessage: (content: string, mode?: "chat" | "agent") => void;
+  sendMessage: (
+    content: string,
+    mode?: "chat" | "agent",
+    files?: File[],
+  ) => void;
   retry: () => void;
 }
 
 type LastAttempt =
-  | { mode: "resend"; content: string; chatMode: "chat" | "agent" }
+  | {
+      mode: "resend";
+      content: string;
+      chatMode: "chat" | "agent";
+      files: File[];
+    }
   | { mode: "regenerate"; chatId: number };
 
 export function useChatStream(
@@ -164,7 +173,7 @@ export function useChatStream(
   );
 
   const sendMessage = useCallback(
-    (content: string, mode: "chat" | "agent" = "chat") => {
+    (content: string, mode: "chat" | "agent" = "chat", files: File[] = []) => {
       const requestChatId = chatId;
 
       async function prepare() {
@@ -182,6 +191,7 @@ export function useChatStream(
               mode: "resend",
               content,
               chatMode: mode,
+              files,
             };
 
             if (activeChatIdRef.current === requestChatId) {
@@ -200,6 +210,9 @@ export function useChatStream(
             content,
             role: "user",
             created_at: new Date().toISOString(),
+            attached_files: files.length
+              ? files.map((file) => file.name)
+              : undefined,
           };
 
           setMessages((current) => [...current, optimisticMessage]);
@@ -209,7 +222,7 @@ export function useChatStream(
           requestChatId,
           (handlers) =>
             streamMessage(
-              { chat_id: targetChatId as number, msg: content },
+              { chat_id: targetChatId as number, msg: content, files },
               handlers,
             ),
           () => {
@@ -235,7 +248,7 @@ export function useChatStream(
     setError(null);
 
     if (attempt.mode === "resend") {
-      sendMessage(attempt.content, attempt.chatMode);
+      sendMessage(attempt.content, attempt.chatMode, attempt.files);
       return;
     }
 

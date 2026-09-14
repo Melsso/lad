@@ -11,8 +11,30 @@ def test_create_message_defaults_tool_fields_to_none(mock_session):
     assert result.tool_call_id is None
     assert result.tool_name is None
     assert result.tool_arguments is None
+    assert result.attached_files is None
     mock_session.add.assert_called_once()
     mock_session.flush.assert_called_once()
+
+
+def test_create_message_json_encodes_attached_files(mock_session):
+    result = messages_module.create_message(
+        mock_session,
+        chat_id=1,
+        role="user",
+        content="hi",
+        attached_files=["main.py", "notes.txt"],
+    )
+
+    assert result.attached_files is not None
+    assert json.loads(result.attached_files) == ["main.py", "notes.txt"]
+
+
+def test_create_message_stores_none_for_empty_attached_files_list(mock_session):
+    result = messages_module.create_message(
+        mock_session, chat_id=1, role="user", content="hi", attached_files=[]
+    )
+
+    assert result.attached_files is None
 
 
 def test_create_tool_call_message_persists_call_metadata(mock_session):

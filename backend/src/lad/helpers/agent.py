@@ -68,7 +68,17 @@ def _message_to_turn(message: Messages) -> dict[str, Any]:
     if message.role == "tool_result":
         return build_tool_result_message(message.tool_name or "", message.content)
 
-    return {"role": message.role, "content": message.content}
+    content = message.content
+
+    if message.attached_files:
+        filenames = json.loads(message.attached_files)
+        if filenames:
+            content = (
+                f"{content}\n\n[Attached files available in the sandbox: "
+                f"{', '.join(filenames)}]"
+            )
+
+    return {"role": message.role, "content": content}
 
 
 def run_agent_turn(

@@ -13,12 +13,14 @@ export interface ChatMessage {
   tool_call_id?: string | null;
   tool_name?: string | null;
   tool_arguments?: string | null;
+  attached_files?: string[] | null;
   created_at: string;
 }
 
 export interface SendMessageRequest {
   chat_id: number;
   msg: string;
+  files?: File[];
 }
 
 export interface StreamMessageHandlers {

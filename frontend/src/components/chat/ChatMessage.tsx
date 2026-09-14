@@ -159,6 +159,19 @@ export function ChatMessage({ message, pending }: ChatMessageProps) {
             )}
           </>
         )}
+
+        {message.attached_files && message.attached_files.length > 0 && (
+          <div className="mt-2 flex flex-wrap gap-1.5 border-t border-line/50 pt-2">
+            {message.attached_files.map((filename) => (
+              <span
+                key={filename}
+                className="rounded-md border border-cyan/30 bg-panel px-2 py-0.5 font-mono text-[10px] text-text-dim"
+              >
+                {filename}
+              </span>
+            ))}
+          </div>
+        )}
       </div>
     </article>
   );

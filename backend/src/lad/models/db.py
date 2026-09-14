@@ -37,6 +37,7 @@ class Messages(Base):
     tool_call_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
     tool_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
     tool_arguments: Mapped[str | None] = mapped_column(Text, nullable=True)
+    attached_files: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=lambda: datetime.now(UTC), nullable=False

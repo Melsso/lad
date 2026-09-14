@@ -41,6 +41,33 @@ def test_message_to_turn_converts_plain_user_and_assistant_messages(message_fact
     }
 
 
+def test_message_to_turn_appends_attached_filenames_to_content(message_factory):
+    user_message = message_factory(
+        1,
+        role="user",
+        content="analyze this",
+        attached_files=json.dumps(["data.csv", "notes.txt"]),
+    )
+
+    result = agent_module._message_to_turn(user_message)
+
+    assert result["role"] == "user"
+    assert result["content"] == (
+        "analyze this\n\n[Attached files available in the sandbox: data.csv, notes.txt]"
+    )
+
+
+def test_message_to_turn_ignores_null_attached_files(message_factory):
+    user_message = message_factory(
+        1, role="user", content="hi there", attached_files=None
+    )
+
+    assert agent_module._message_to_turn(user_message) == {
+        "role": "user",
+        "content": "hi there",
+    }
+
+
 def test_message_to_turn_reconstructs_tool_call_message(message_factory):
     tool_call_message = message_factory(
         3,
