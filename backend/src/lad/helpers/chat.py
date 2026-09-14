@@ -4,6 +4,7 @@ from collections.abc import Iterator
 from sqlalchemy.orm import Session
 
 from lad.core.db import get_db_session
+from lad.core.embeddings import embed_texts
 from lad.core.sse import format_sse_event
 from lad.helpers.agent import run_agent_turn
 from lad.helpers.llm import generate_response_stream, generate_summary
@@ -106,17 +107,20 @@ def save_chat_summary(
     db: Session, chat_id: int, content: str, last_message_id: int
 ) -> ConversationSummary:
     summary = get_chat_summary(db, chat_id)
+    embedding = embed_texts([content])[0]
 
     if summary is None:
         summary = ConversationSummary(
             chat_id=chat_id,
             content=content,
             last_message_id=last_message_id,
+            embedding=embedding,
         )
         db.add(summary)
     else:
         summary.content = content
         summary.last_message_id = last_message_id
+        summary.embedding = embedding
 
     db.flush()
 

@@ -220,6 +220,7 @@ def test_get_messages_after_summary_with_last_id_filters_twice(
 
 def test_save_chat_summary_creates_when_missing(monkeypatch, mock_session):
     monkeypatch.setattr(chat_module, "get_chat_summary", lambda db, chat_id: None)
+    monkeypatch.setattr(chat_module, "embed_texts", lambda texts: [[0.1, 0.2, 0.3]])
 
     result = chat_module.save_chat_summary(
         mock_session, chat_id=1, content="new content", last_message_id=5
@@ -227,6 +228,7 @@ def test_save_chat_summary_creates_when_missing(monkeypatch, mock_session):
 
     assert result.content == "new content"
     assert result.last_message_id == 5
+    assert result.embedding == [0.1, 0.2, 0.3]
     mock_session.add.assert_called_once()
     mock_session.flush.assert_called_once()
 
@@ -236,6 +238,7 @@ def test_save_chat_summary_updates_when_existing(
 ):
     existing = summary_factory(chat_id=1, content="old", last_message_id=1)
     monkeypatch.setattr(chat_module, "get_chat_summary", lambda db, chat_id: existing)
+    monkeypatch.setattr(chat_module, "embed_texts", lambda texts: [[0.4, 0.5, 0.6]])
 
     result = chat_module.save_chat_summary(
         mock_session, chat_id=1, content="updated", last_message_id=9
@@ -244,8 +247,29 @@ def test_save_chat_summary_updates_when_existing(
     assert result is existing
     assert result.content == "updated"
     assert result.last_message_id == 9
+    assert result.embedding == [0.4, 0.5, 0.6]
     mock_session.add.assert_not_called()
     mock_session.flush.assert_called_once()
+
+
+def test_save_chat_summary_embeds_the_summary_content_not_something_else(
+    monkeypatch, mock_session
+):
+    monkeypatch.setattr(chat_module, "get_chat_summary", lambda db, chat_id: None)
+
+    captured_texts = []
+
+    def fake_embed_texts(texts):
+        captured_texts.extend(texts)
+        return [[0.1, 0.2, 0.3]]
+
+    monkeypatch.setattr(chat_module, "embed_texts", fake_embed_texts)
+
+    chat_module.save_chat_summary(
+        mock_session, chat_id=1, content="summary text", last_message_id=5
+    )
+
+    assert captured_texts == ["summary text"]
 
 
 def test_stream_chat_msg_yields_error_when_chat_missing(
@@ -356,6 +380,7 @@ def test_stream_chat_msg_triggers_summarization(
         chat_module, "generate_response_stream", fake_generate_response_stream
     )
     monkeypatch.setattr(chat_module, "create_message", fake_create_message)
+    monkeypatch.setattr(chat_module, "embed_texts", lambda texts: [[0.1, 0.2, 0.3]])
 
     events = list(chat_module.stream_chat_msg(chat_id=1, msg="hi"))
 

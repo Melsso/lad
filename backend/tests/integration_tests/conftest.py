@@ -52,3 +52,14 @@ def db_session(postgres_engine):
     session.close()
     transaction.rollback()
     connection.close()
+
+
+@pytest.fixture(autouse=True)
+def _fake_embeddings(monkeypatch):
+    from lad.helpers import chat as chat_module
+    from lad.schemas.config import conf
+
+    def fake_embed_texts(texts):
+        return [[0.0] * conf.EMBEDDING_DIM for _ in texts]
+
+    monkeypatch.setattr(chat_module, "embed_texts", fake_embed_texts)

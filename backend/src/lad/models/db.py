@@ -61,6 +61,9 @@ class ConversationSummary(Base):
     last_message_id: Mapped[int] = mapped_column(
         ForeignKey("messages.id"), nullable=False
     )
+    embedding: Mapped[list[float] | None] = mapped_column(
+        Vector(conf.EMBEDDING_DIM), nullable=True
+    )
 
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=lambda: datetime.now(UTC), nullable=False
