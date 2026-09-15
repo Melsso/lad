@@ -1,6 +1,7 @@
 import pytest
 
 from lad.core import mcp as mcp_module
+from lad.schemas.llm import ToolDefinition
 
 
 def test_flatten_exceptions_returns_a_plain_exception_as_is():
@@ -37,8 +38,8 @@ def test_call_tool_unwraps_exception_group_into_a_readable_runtime_error(
     monkeypatch,
 ):
     client = mcp_module.MCPClient(servers=[])
-    client._tool_owners["search_docs"] = mcp_module.MCPServerConfig(
-        name="rag", command="python", args=[]
+    client._tool_owners["recall_memory"] = mcp_module.MCPServerConfig(
+        name="memory", command="python", args=[]
     )
 
     def fake_run(coro):
@@ -50,14 +51,14 @@ def test_call_tool_unwraps_exception_group_into_a_readable_runtime_error(
     monkeypatch.setattr(mcp_module.asyncio, "run", fake_run)
 
     with pytest.raises(RuntimeError, match="404 model not found"):
-        client.call_tool("search_docs", {})
+        client.call_tool("recall_memory", {})
 
 
 def test_list_tools_unwraps_exception_group_into_a_readable_runtime_error(
     monkeypatch,
 ):
     client = mcp_module.MCPClient(
-        servers=[mcp_module.MCPServerConfig(name="rag", command="python", args=[])]
+        servers=[mcp_module.MCPServerConfig(name="memory", command="python", args=[])]
     )
 
     def fake_run(coro):
@@ -114,12 +115,12 @@ def test_call_tool_works_without_extra_env(monkeypatch):
     monkeypatch.setattr(mcp_module, "stdio_client", fake_stdio_client)
 
     client = mcp_module.MCPClient(servers=[])
-    client._tool_owners["search_docs"] = mcp_module.MCPServerConfig(
-        name="rag", command="python", args=["-m", "lad.tools.rag_server"]
+    client._tool_owners["recall_memory"] = mcp_module.MCPServerConfig(
+        name="memory", command="python", args=["-m", "lad.tools.memory_server"]
     )
 
     with pytest.raises(RuntimeError, match="stop here"):
-        client.call_tool("search_docs", {"query": "hi"})
+        client.call_tool("recall_memory", {"query": "hi"})
 
     assert "LAD_CHAT_ID" not in captured_params["env"]
 
@@ -173,3 +174,39 @@ def test_call_tool_raises_for_a_name_with_no_owning_server():
 
     with pytest.raises(ValueError, match="Unknown MCP tool"):
         client.call_tool("nonexistent", {})
+
+
+def test_list_tools_filters_to_the_allowed_set_when_given(monkeypatch):
+    client = mcp_module.MCPClient(
+        servers=[mcp_module.MCPServerConfig(name="x", command="python", args=[])]
+    )
+
+    tools = [
+        ToolDefinition(name="run_command", description="", parameters={}),
+        ToolDefinition(name="web_search", description="", parameters={}),
+        ToolDefinition(name="recall_memory", description="", parameters={}),
+    ]
+
+    async def fake_list_tools_async():
+        return tools
+
+    monkeypatch.setattr(client, "_list_tools_async", fake_list_tools_async)
+
+    result = client.list_tools(allowed_tools={"web_search", "recall_memory"})
+
+    assert {tool.name for tool in result} == {"web_search", "recall_memory"}
+
+
+def test_list_tools_returns_everything_when_no_filter_given(monkeypatch):
+    client = mcp_module.MCPClient(
+        servers=[mcp_module.MCPServerConfig(name="x", command="python", args=[])]
+    )
+
+    tools = [ToolDefinition(name="run_command", description="", parameters={})]
+
+    async def fake_list_tools_async():
+        return tools
+
+    monkeypatch.setattr(client, "_list_tools_async", fake_list_tools_async)
+
+    assert client.list_tools() == tools

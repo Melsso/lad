@@ -380,58 +380,25 @@ def test_generate_turn_assigns_unique_call_ids_for_parallel_tool_calls(monkeypat
         next(generator)
 
 
-def test_build_llm_context_formats_tool_call_and_tool_result_rows(message_factory):
-    messages = [
-        message_factory(
-            1,
-            role="tool_call",
-            content="",
-            tool_name="get_temperature",
-            tool_arguments='{"city": "New York"}',
-        ),
-        message_factory(
-            2,
-            role="tool_result",
-            content="22°C",
-            tool_name="get_temperature",
-        ),
-    ]
+def test_format_message_renders_tool_call_and_tool_result_rows(message_factory):
+    tool_call = message_factory(
+        1,
+        role="tool_call",
+        content="",
+        tool_name="get_temperature",
+        tool_arguments='{"city": "New York"}',
+    )
+    tool_result = message_factory(
+        2, role="tool_result", content="22°C", tool_name="get_temperature"
+    )
 
-    context = helpers_llm.build_llm_context(summary=None, messages=messages)
-
-    assert 'TOOL_CALL get_temperature({"city": "New York"})' in context
-    assert "TOOL_RESULT get_temperature: 22°C" in context
-
-
-def test_build_llm_context_with_summary_and_messages(message_factory):
-    messages = [
-        message_factory(1, role="user", content="hi"),
-        message_factory(2, role="assistant", content="hello"),
-    ]
-
-    context = helpers_llm.build_llm_context(summary="prior summary", messages=messages)
-
-    assert "CONVERSATION SUMMARY:" in context
-    assert "prior summary" in context
-    assert "RECENT CONVERSATION:" in context
-    assert "USER: hi" in context
-    assert "ASSISTANT: hello" in context
-
-
-def test_build_llm_context_without_summary(message_factory):
-    messages = [message_factory(1, role="user", content="hi")]
-
-    context = helpers_llm.build_llm_context(summary=None, messages=messages)
-
-    assert "CONVERSATION SUMMARY:" not in context
-    assert "USER: hi" in context
-
-
-def test_build_llm_context_without_messages():
-    context = helpers_llm.build_llm_context(summary="only a summary", messages=[])
-
-    assert "CONVERSATION SUMMARY:" in context
-    assert "RECENT CONVERSATION:" not in context
+    assert (
+        helpers_llm._format_message(tool_call)
+        == 'TOOL_CALL get_temperature({"city": "New York"})'
+    )
+    assert (
+        helpers_llm._format_message(tool_result) == "TOOL_RESULT get_temperature: 22°C"
+    )
 
 
 def test_generate_summary_returns_existing_when_no_messages():
@@ -469,26 +436,3 @@ def test_generate_summary_calls_generate_content(monkeypatch, message_factory):
     assert "remember this" in captured["contents"]
     assert captured["system_instruction"] == helpers_llm.SUMMARY_SYSTEM_PROMPT
     assert captured["temperature"] == 0.2
-
-
-def test_generate_response_stream_yields_from_stream_content(
-    monkeypatch, message_factory
-):
-    captured = {}
-
-    def fake_stream_content(*, contents, system_instruction=None, temperature=None):
-        captured["contents"] = contents
-        captured["system_instruction"] = system_instruction
-        yield "chunk-1"
-        yield "chunk-2"
-
-    monkeypatch.setattr(helpers_llm, "stream_content", fake_stream_content)
-
-    messages = [message_factory(1, role="user", content="hi")]
-    result = list(
-        helpers_llm.generate_response_stream(summary="ctx", messages=messages)
-    )
-
-    assert result == ["chunk-1", "chunk-2"]
-    assert "ctx" in captured["contents"]
-    assert captured["system_instruction"] == helpers_llm.SYSTEM_PROMPT

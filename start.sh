@@ -2,10 +2,10 @@
 
 set -e
 
-NETWORK_NAME="lad_network"
+NETWORK_NAME="lad-network"
 
-DB_CONTAINER="local_lad_db"
-DB_IMAGE="local_lad_db_image"
+DB_CONTAINER="lad-db"
+DB_IMAGE="lad-db-image"
 
 echo "Checking docker network..."
 

@@ -1,6 +1,7 @@
 from contextlib import contextmanager
 
 from lad.helpers import chat as chat_module
+from lad.helpers.messages import sse_event_for_message
 
 
 @contextmanager
@@ -147,13 +148,14 @@ def test_stream_chat_msg_persists_user_and_assistant_messages(monkeypatch, db_se
         chat_module, "get_db_session", lambda: _fake_context(db_session)
     )
 
-    def fake_generate_response_stream(*, summary, messages):
-        yield "Hello "
-        yield "there"
+    def fake_run_chat_turn(db, chat_id, summary, active_messages):
+        assistant_message = chat_module.create_message(
+            db=db, chat_id=chat_id, role="assistant", content="Hello there"
+        )
+        db.commit()
+        yield sse_event_for_message("done", assistant_message)
 
-    monkeypatch.setattr(
-        chat_module, "generate_response_stream", fake_generate_response_stream
-    )
+    monkeypatch.setattr(chat_module, "run_chat_turn", fake_run_chat_turn)
 
     events = list(chat_module.stream_chat_msg(chat_id=chat.id, msg="hi"))
 
@@ -174,11 +176,11 @@ def test_stream_chat_msg_keeps_user_message_when_llm_fails(monkeypatch, db_sessi
         chat_module, "get_db_session", lambda: _fake_context(db_session)
     )
 
-    def broken_stream(*, summary, messages):
+    def broken_turn(db, chat_id, summary, active_messages):
         raise RuntimeError("503 UNAVAILABLE")
         yield  # pragma: no cover
 
-    monkeypatch.setattr(chat_module, "generate_response_stream", broken_stream)
+    monkeypatch.setattr(chat_module, "run_chat_turn", broken_turn)
 
     events = list(chat_module.stream_chat_msg(chat_id=chat.id, msg="unanswered"))
 
@@ -205,12 +207,14 @@ def test_stream_chat_retry_generates_reply_for_dangling_user_message(
         chat_module, "get_db_session", lambda: _fake_context(db_session)
     )
 
-    def fake_generate_response_stream(*, summary, messages):
-        yield "a reply"
+    def fake_run_chat_turn(db, chat_id, summary, active_messages):
+        assistant_message = chat_module.create_message(
+            db=db, chat_id=chat_id, role="assistant", content="a reply"
+        )
+        db.commit()
+        yield sse_event_for_message("done", assistant_message)
 
-    monkeypatch.setattr(
-        chat_module, "generate_response_stream", fake_generate_response_stream
-    )
+    monkeypatch.setattr(chat_module, "run_chat_turn", fake_run_chat_turn)
 
     events = list(chat_module.stream_chat_retry(chat_id=chat.id))
 
@@ -243,15 +247,17 @@ def test_stream_chat_msg_triggers_real_summarization(monkeypatch, db_session):
         assert len(messages) == 13
         return "condensed summary"
 
-    def fake_generate_response_stream(*, summary, messages):
+    def fake_run_chat_turn(db, chat_id, summary, active_messages):
         assert summary == "condensed summary"
-        assert len(messages) == 8
-        yield "ok"
+        assert len(active_messages) == 8
+        assistant_message = chat_module.create_message(
+            db=db, chat_id=chat_id, role="assistant", content="ok"
+        )
+        db.commit()
+        yield sse_event_for_message("done", assistant_message)
 
     monkeypatch.setattr(chat_module, "generate_summary", fake_generate_summary)
-    monkeypatch.setattr(
-        chat_module, "generate_response_stream", fake_generate_response_stream
-    )
+    monkeypatch.setattr(chat_module, "run_chat_turn", fake_run_chat_turn)
 
     events = list(chat_module.stream_chat_msg(chat_id=chat.id, msg="one more"))
 

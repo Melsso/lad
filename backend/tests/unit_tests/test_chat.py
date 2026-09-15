@@ -76,30 +76,30 @@ def test_create_chat_persists_agent_mode_when_requested(mock_session):
     assert chat.mode == "agent"
 
 
-def test_stream_chat_msg_uses_plain_reply_for_chat_mode(
+def test_stream_chat_msg_uses_chat_turn_for_chat_mode(
     monkeypatch, session_builder, patch_db_session, chat_factory, message_factory
 ):
     chat = chat_factory(1, mode="chat")
     session = session_builder(chat=chat, messages=[], summary=None)
     patch_db_session(session)
 
-    plain_reply_called = {"value": False}
+    chat_turn_called = {"value": False}
     agent_turn_called = {"value": False}
 
-    def fake_stream_plain_reply(db, chat_id, summary, active_messages):
-        plain_reply_called["value"] = True
+    def fake_run_chat_turn(db, chat_id, summary, active_messages):
+        chat_turn_called["value"] = True
         yield format_sse_event("chunk", {"text": "hi"})
 
     def fake_run_agent_turn(db, chat_id, summary, active_messages):
         agent_turn_called["value"] = True
         yield format_sse_event("chunk", {"text": "should not run"})
 
-    monkeypatch.setattr(chat_module, "_stream_plain_reply", fake_stream_plain_reply)
+    monkeypatch.setattr(chat_module, "run_chat_turn", fake_run_chat_turn)
     monkeypatch.setattr(chat_module, "run_agent_turn", fake_run_agent_turn)
 
     list(chat_module.stream_chat_msg(chat_id=1, msg="hi"))
 
-    assert plain_reply_called["value"] is True
+    assert chat_turn_called["value"] is True
     assert agent_turn_called["value"] is False
 
 
@@ -110,24 +110,24 @@ def test_stream_chat_msg_uses_agent_turn_for_agent_mode(
     session = session_builder(chat=chat, messages=[], summary=None)
     patch_db_session(session)
 
-    plain_reply_called = {"value": False}
+    chat_turn_called = {"value": False}
     agent_turn_called = {"value": False}
 
-    def fake_stream_plain_reply(db, chat_id, summary, active_messages):
-        plain_reply_called["value"] = True
+    def fake_run_chat_turn(db, chat_id, summary, active_messages):
+        chat_turn_called["value"] = True
         yield format_sse_event("chunk", {"text": "should not run"})
 
     def fake_run_agent_turn(db, chat_id, summary, active_messages):
         agent_turn_called["value"] = True
         yield format_sse_event("chunk", {"text": "hi"})
 
-    monkeypatch.setattr(chat_module, "_stream_plain_reply", fake_stream_plain_reply)
+    monkeypatch.setattr(chat_module, "run_chat_turn", fake_run_chat_turn)
     monkeypatch.setattr(chat_module, "run_agent_turn", fake_run_agent_turn)
 
     list(chat_module.stream_chat_msg(chat_id=1, msg="hi"))
 
     assert agent_turn_called["value"] is True
-    assert plain_reply_called["value"] is False
+    assert chat_turn_called["value"] is False
 
 
 def test_generate_temporary_chat_title_collapses_whitespace():
@@ -289,21 +289,17 @@ def test_stream_chat_msg_yields_error_when_chat_missing(
 def test_stream_chat_msg_success_streams_and_persists(
     monkeypatch, session_builder, patch_db_session, chat_factory, message_factory
 ):
-    chat = chat_factory(1)
+    chat = chat_factory(1, mode="chat")
     session = session_builder(chat=chat, messages=[], summary=None)
     patch_db_session(session)
 
-    def fake_generate_response_stream(*, summary, messages):
-        yield "Hel"
-        yield "lo"
+    def fake_run_chat_turn(db, chat_id, summary, active_messages):
+        yield format_sse_event("chunk", {"text": "Hel"})
+        yield format_sse_event("chunk", {"text": "lo"})
+        session.commit()
+        yield format_sse_event("done", {"id": 99, "content": "Hello"})
 
-    def fake_create_message(db, chat_id, role, content, attached_files=None):
-        return message_factory(99, chat_id=chat_id, role=role, content=content)
-
-    monkeypatch.setattr(
-        chat_module, "generate_response_stream", fake_generate_response_stream
-    )
-    monkeypatch.setattr(chat_module, "create_message", fake_create_message)
+    monkeypatch.setattr(chat_module, "run_chat_turn", fake_run_chat_turn)
 
     events = list(chat_module.stream_chat_msg(chat_id=1, msg="hi"))
 
@@ -316,15 +312,15 @@ def test_stream_chat_msg_success_streams_and_persists(
 def test_stream_chat_msg_handles_llm_failure(
     monkeypatch, session_builder, patch_db_session, chat_factory
 ):
-    chat = chat_factory(1)
+    chat = chat_factory(1, mode="chat")
     session = session_builder(chat=chat, messages=[], summary=None)
     patch_db_session(session)
 
-    def broken_stream(*, summary, messages):
+    def broken_turn(db, chat_id, summary, active_messages):
         raise RuntimeError("503 UNAVAILABLE")
         yield  # pragma: no cover
 
-    monkeypatch.setattr(chat_module, "generate_response_stream", broken_stream)
+    monkeypatch.setattr(chat_module, "run_chat_turn", broken_turn)
 
     events = list(chat_module.stream_chat_msg(chat_id=1, msg="hi"))
 
@@ -334,29 +330,10 @@ def test_stream_chat_msg_handles_llm_failure(
     session.rollback.assert_called_once()
 
 
-def test_stream_chat_msg_handles_empty_llm_response(
-    monkeypatch, session_builder, patch_db_session, chat_factory
-):
-    chat = chat_factory(1)
-    session = session_builder(chat=chat, messages=[], summary=None)
-    patch_db_session(session)
-
-    def empty_stream(*, summary, messages):
-        yield "   "
-
-    monkeypatch.setattr(chat_module, "generate_response_stream", empty_stream)
-
-    events = list(chat_module.stream_chat_msg(chat_id=1, msg="hi"))
-
-    assert any("event: error" in e for e in events)
-    assert not any("event: done" in e for e in events)
-    session.rollback.assert_called_once()
-
-
 def test_stream_chat_msg_triggers_summarization(
     monkeypatch, session_builder, patch_db_session, chat_factory, message_factory
 ):
-    chat = chat_factory(1)
+    chat = chat_factory(1, mode="chat")
     messages = [message_factory(i, content=f"msg-{i}") for i in range(20)]
     session = session_builder(chat=chat, messages=messages, summary=None)
     patch_db_session(session)
@@ -367,19 +344,13 @@ def test_stream_chat_msg_triggers_summarization(
         summarize_calls.append(messages)
         return "condensed summary"
 
-    def fake_generate_response_stream(*, summary, messages):
+    def fake_run_chat_turn(db, chat_id, summary, active_messages):
         assert summary == "condensed summary"
-        assert len(messages) == 8
-        yield "ok"
-
-    def fake_create_message(db, chat_id, role, content, attached_files=None):
-        return message_factory(99, chat_id=chat_id, role=role, content=content)
+        assert len(active_messages) == 8
+        yield format_sse_event("done", {"id": 99, "content": "ok"})
 
     monkeypatch.setattr(chat_module, "generate_summary", fake_generate_summary)
-    monkeypatch.setattr(
-        chat_module, "generate_response_stream", fake_generate_response_stream
-    )
-    monkeypatch.setattr(chat_module, "create_message", fake_create_message)
+    monkeypatch.setattr(chat_module, "run_chat_turn", fake_run_chat_turn)
     monkeypatch.setattr(chat_module, "embed_texts", lambda texts: [[0.1, 0.2, 0.3]])
 
     events = list(chat_module.stream_chat_msg(chat_id=1, msg="hi"))
@@ -418,44 +389,42 @@ def test_stream_chat_retry_errors_when_nothing_to_retry(
 def test_stream_chat_retry_success_does_not_create_user_message(
     monkeypatch, session_builder, patch_db_session, chat_factory, message_factory
 ):
-    chat = chat_factory(1)
+    chat = chat_factory(1, mode="chat")
     messages = [message_factory(1, role="user", content="unanswered")]
     session = session_builder(chat=chat, messages=messages, summary=None)
     patch_db_session(session)
 
     create_message_calls = []
 
-    def tracking_create_message(db, chat_id, role, content):
+    def tracking_create_message(db, chat_id, role, content, attached_files=None):
         create_message_calls.append(role)
         return message_factory(2, role=role, content=content)
 
-    def fake_generate_response_stream(*, summary, messages):
-        yield "a reply"
+    def fake_run_chat_turn(db, chat_id, summary, active_messages):
+        yield format_sse_event("done", {"id": 2, "content": "a reply"})
 
     monkeypatch.setattr(chat_module, "create_message", tracking_create_message)
-    monkeypatch.setattr(
-        chat_module, "generate_response_stream", fake_generate_response_stream
-    )
+    monkeypatch.setattr(chat_module, "run_chat_turn", fake_run_chat_turn)
 
     events = list(chat_module.stream_chat_retry(chat_id=1))
 
-    assert create_message_calls == ["assistant"]
+    assert create_message_calls == []
     assert any("event: done" in e for e in events)
 
 
 def test_stream_chat_retry_handles_llm_failure(
     monkeypatch, session_builder, patch_db_session, chat_factory, message_factory
 ):
-    chat = chat_factory(1)
+    chat = chat_factory(1, mode="chat")
     messages = [message_factory(1, role="user", content="unanswered")]
     session = session_builder(chat=chat, messages=messages, summary=None)
     patch_db_session(session)
 
-    def broken_stream(*, summary, messages):
+    def broken_turn(db, chat_id, summary, active_messages):
         raise RuntimeError("503 UNAVAILABLE")
         yield  # pragma: no cover
 
-    monkeypatch.setattr(chat_module, "generate_response_stream", broken_stream)
+    monkeypatch.setattr(chat_module, "run_chat_turn", broken_turn)
 
     events = list(chat_module.stream_chat_retry(chat_id=1))
 

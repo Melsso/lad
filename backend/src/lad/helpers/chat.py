@@ -6,9 +6,9 @@ from sqlalchemy.orm import Session
 from lad.core.db import get_db_session
 from lad.core.embeddings import embed_texts
 from lad.core.sse import format_sse_event
-from lad.helpers.agent import run_agent_turn
-from lad.helpers.llm import generate_response_stream, generate_summary
-from lad.helpers.messages import create_message, sse_event_for_message
+from lad.helpers.agent import run_agent_turn, run_chat_turn
+from lad.helpers.llm import generate_summary
+from lad.helpers.messages import create_message
 from lad.models.db import Chat, ConversationSummary, Messages
 from lad.schemas.chat import ChatMessageResponse, ChatResponse
 from lad.schemas.config import conf
@@ -127,34 +127,6 @@ def save_chat_summary(
     return summary
 
 
-def _stream_plain_reply(
-    db: Session, chat_id: int, summary: str | None, active_messages: list[Messages]
-) -> Iterator[str]:
-    full_response = ""
-
-    for chunk in generate_response_stream(
-        summary=summary,
-        messages=active_messages,
-    ):
-        full_response += chunk
-        yield format_sse_event("chunk", {"text": chunk})
-
-    full_response = full_response.strip()
-
-    if not full_response:
-        raise RuntimeError("LLM returned an empty response")
-
-    assistant_message = create_message(
-        db=db,
-        chat_id=chat_id,
-        role="assistant",
-        content=full_response,
-    )
-    db.commit()
-
-    yield sse_event_for_message("done", assistant_message)
-
-
 def _stream_and_persist_reply(db: Session, chat: Chat) -> Iterator[str]:
     chat_id = chat.id
 
@@ -187,7 +159,7 @@ def _stream_and_persist_reply(db: Session, chat: Chat) -> Iterator[str]:
     if chat.mode == "agent":
         yield from run_agent_turn(db, chat_id, summary_content, active_messages)
     else:
-        yield from _stream_plain_reply(db, chat_id, summary_content, active_messages)
+        yield from run_chat_turn(db, chat_id, summary_content, active_messages)
 
 
 def stream_chat_msg(

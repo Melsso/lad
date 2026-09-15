@@ -1,7 +1,7 @@
 import shutil
+from collections.abc import Sequence
 from pathlib import Path
-
-from fastapi import UploadFile
+from typing import Any, Protocol
 
 SANDBOX_ROOT = Path("/data/chat_sandboxes")
 
@@ -44,7 +44,13 @@ ALLOWED_EXTENSIONS = {
 }
 
 
-def validate_uploads(files: list[UploadFile]) -> None:
+class UploadedFile(Protocol):
+    filename: str | None
+    size: int | None
+    file: Any
+
+
+def validate_uploads(files: Sequence[UploadedFile]) -> None:
     if len(files) > MAX_FILES_PER_MESSAGE:
         raise ValueError(
             f"Too many files attached ({len(files)}); the limit is "
@@ -66,14 +72,14 @@ def chat_sandbox_dir(chat_id: int) -> Path:
     return SANDBOX_ROOT / str(chat_id)
 
 
-def save_uploads(chat_id: int, files: list[UploadFile]) -> list[str]:
+def save_uploads(chat_id: int, files: Sequence[UploadedFile]) -> list[str]:
     target_dir = chat_sandbox_dir(chat_id)
     target_dir.mkdir(parents=True, exist_ok=True)
 
     filenames = []
 
     for file in files:
-        filename = Path(file.filename).name
+        filename = Path(file.filename or "unnamed").name
         dest_path = target_dir / filename
 
         with dest_path.open("wb") as dest:

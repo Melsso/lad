@@ -24,12 +24,13 @@ packages = [{include = "sandbox", from = "src"}]
 
 [tool.pytest.ini_options]
 testpaths = ["tests/"]
-addopts = "-ra"
+addopts = "-ra -p no:cacheprovider"
 
 [tool.mypy]
 plugins = ["pydantic.mypy"]
 check_untyped_defs = true
 ignore_missing_imports = false
+incremental = false
 
 [tool.pydantic-mypy]
 init_typed = false

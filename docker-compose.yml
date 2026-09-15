@@ -9,7 +9,7 @@ services:
     depends_on:
       - api
     networks:
-      - lad_network
+      - lad-network
 
   api:
     build:
@@ -20,8 +20,8 @@ services:
     volumes:
       - ./chat_sandboxes:/data/chat_sandboxes
     networks:
-      - lad_network
-      - sandbox_network
+      - lad-network
+      - sandbox-network
     expose:
       - "8000"
     labels:
@@ -34,7 +34,7 @@ services:
     volumes:
       - ./chat_sandboxes:/data/chat_sandboxes
     networks:
-      - sandbox_network
+      - sandbox-network
     mem_limit: 512m
     cpus: 0.5
     labels:
@@ -44,6 +44,6 @@ volumes:
   postgres_data:
 
 networks:
-  lad_network:
+  lad-network:
     external: true
-  sandbox_network: {}
+  sandbox-network: {}

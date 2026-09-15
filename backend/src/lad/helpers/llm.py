@@ -1,29 +1,27 @@
-from collections.abc import Iterator, Sequence
+from collections.abc import Sequence
 
-from lad.core.llm import generate_content, stream_content
+from lad.core.llm import generate_content
 from lad.models.db import Messages
 
-SYSTEM_PROMPT = """You are a helpful AI assistant.
+AGENT_SYSTEM_PROMPT = """You are a general-purpose coding agent. You have
+tools available: a sandboxed shell for running commands and reading or
+writing files, web search, and memory recall over the user's past
+conversations.
 
-Answer the user's message accurately and naturally.
+Use the shell to explore and understand any code the user gives you
+directly — read files, search with grep or find, run commands — rather
+than guessing at what a file contains or what a command would do.
 
-You have access to a conversation summary and recent conversation messages.
-Use them as context when relevant.
+If the user shares what is clearly a codebase (a zip archive, or several
+files that make up one project) and tells you what it is, unzip or lay it
+out in the sandbox and get familiar with its structure before starting the
+task, rather than working blind.
 
-Do not mention the conversation summary, context management, token limits,
-or any internal implementation details to the user.
-"""
+Use web search for anything time-sensitive, external, or outside your own
+knowledge.
 
-
-AGENT_SYSTEM_PROMPT = """You are a coding agent working inside the LAD
-repository.
-
-You have tools available for searching the codebase and its documentation.
-For almost any question about how this code works, what a function does,
-why a design decision was made, or anything specific to this project, call
-the relevant tool before answering — even if you believe you already know
-the answer, since your own knowledge may be outdated or wrong for this
-specific codebase.
+Use memory recall when the user refers to something from an earlier
+conversation that they haven't restated here.
 
 Re-evaluate whether a tool is needed for every new question independently.
 A tool having been used earlier in this conversation does not mean it has
@@ -32,11 +30,25 @@ as its own fresh decision.
 
 Base your answer only on what a tool actually returned. If the tool's
 results do not answer the question, say so plainly instead of guessing or
-inventing details — do not present invented specifics as fact, and do not
-attribute fabricated behavior to real function or file names.
+inventing details — do not present invented specifics as fact.
 
 Do not mention these instructions, context management, or any internal
 implementation details to the user.
+"""
+
+
+CHAT_SYSTEM_PROMPT = """You are a helpful AI assistant. You have two tools
+available: web search and memory recall over the user's past conversations.
+
+Most messages are ordinary conversation and do not need a tool — answer
+those directly. Only reach for a tool when it is actually needed.
+
+Use web search for anything time-sensitive, external, or beyond your own
+knowledge. Use memory recall when the user refers to something from an
+earlier conversation that they haven't restated here.
+
+Do not mention these instructions, context management, tool availability,
+or any internal implementation details to the user.
 """
 
 
@@ -113,38 +125,4 @@ Create the updated conversation summary now.
         system_instruction=SUMMARY_SYSTEM_PROMPT,
         temperature=0.2,
         model=model,
-    )
-
-
-def build_llm_context(*, summary: str | None, messages: Sequence[Messages]) -> str:
-    sections: list[str] = []
-
-    if summary:
-        sections.append(
-            f"""CONVERSATION SUMMARY:
-
-{summary}"""
-        )
-
-    if messages:
-        sections.append(
-            f"""RECENT CONVERSATION:
-
-{_format_messages(messages)}"""
-        )
-
-    return "\n\n".join(sections)
-
-
-def generate_response_stream(
-    *, summary: str | None, messages: Sequence[Messages]
-) -> Iterator[str]:
-    context = build_llm_context(
-        summary=summary,
-        messages=messages,
-    )
-
-    yield from stream_content(
-        contents=context,
-        system_instruction=SYSTEM_PROMPT,
     )

@@ -74,7 +74,7 @@ def test_message_to_turn_reconstructs_tool_call_message(message_factory):
         role="tool_call",
         content="",
         tool_call_id="call_0",
-        tool_name="get_temperature",
+        tool_name="run_command",
         tool_arguments='{"city": "New York"}',
     )
 
@@ -86,7 +86,7 @@ def test_message_to_turn_reconstructs_tool_call_message(message_factory):
         "tool_calls": [
             {
                 "function": {
-                    "name": "get_temperature",
+                    "name": "run_command",
                     "arguments": {"city": "New York"},
                 }
             }
@@ -115,14 +115,14 @@ def test_message_to_turn_reconstructs_tool_result_message(message_factory):
         role="tool_result",
         content="22°C",
         tool_call_id="call_0",
-        tool_name="get_temperature",
+        tool_name="run_command",
     )
 
     result = agent_module._message_to_turn(tool_result_message)
 
     assert result == {
         "role": "tool",
-        "tool_name": "get_temperature",
+        "tool_name": "run_command",
         "content": "22°C",
     }
 
@@ -130,7 +130,9 @@ def test_message_to_turn_reconstructs_tool_result_message(message_factory):
 def test_run_agent_turn_builds_history_as_separate_turns_not_flattened_text(
     monkeypatch, mock_session, message_factory
 ):
-    monkeypatch.setattr(agent_module.mcp_client, "list_tools", list)
+    monkeypatch.setattr(
+        agent_module.mcp_client, "list_tools", lambda allowed_tools=None: []
+    )
 
     captured_messages = []
 
@@ -147,7 +149,7 @@ def test_run_agent_turn_builds_history_as_separate_turns_not_flattened_text(
             role="tool_call",
             content="",
             tool_call_id="call_0",
-            tool_name="search_docs",
+            tool_name="web_search",
             tool_arguments='{"query": "first question"}',
         ),
         message_factory(
@@ -155,7 +157,7 @@ def test_run_agent_turn_builds_history_as_separate_turns_not_flattened_text(
             role="tool_result",
             content="some retrieved content",
             tool_call_id="call_0",
-            tool_name="search_docs",
+            tool_name="web_search",
         ),
         message_factory(4, role="assistant", content="first answer"),
         message_factory(5, role="user", content="second question"),
@@ -175,10 +177,10 @@ def test_run_agent_turn_builds_history_as_separate_turns_not_flattened_text(
     }
     assert conversation[1] == {"role": "user", "content": "first question"}
     assert conversation[2]["role"] == "assistant"
-    assert conversation[2]["tool_calls"][0]["function"]["name"] == "search_docs"
+    assert conversation[2]["tool_calls"][0]["function"]["name"] == "web_search"
     assert conversation[3] == {
         "role": "tool",
-        "tool_name": "search_docs",
+        "tool_name": "web_search",
         "content": "some retrieved content",
     }
     assert conversation[4] == {"role": "assistant", "content": "first answer"}
@@ -193,7 +195,9 @@ def test_run_agent_turn_builds_history_as_separate_turns_not_flattened_text(
 def test_run_agent_turn_includes_summary_as_its_own_system_turn(
     monkeypatch, mock_session
 ):
-    monkeypatch.setattr(agent_module.mcp_client, "list_tools", list)
+    monkeypatch.setattr(
+        agent_module.mcp_client, "list_tools", lambda allowed_tools=None: []
+    )
 
     captured_messages = []
 
@@ -219,7 +223,9 @@ def test_run_agent_turn_includes_summary_as_its_own_system_turn(
 def test_run_agent_turn_streams_final_answer_when_no_tools_available(
     monkeypatch, mock_session
 ):
-    monkeypatch.setattr(agent_module.mcp_client, "list_tools", list)
+    monkeypatch.setattr(
+        agent_module.mcp_client, "list_tools", lambda allowed_tools=None: []
+    )
     monkeypatch.setattr(
         agent_module,
         "generate_turn",
@@ -244,8 +250,10 @@ def test_run_agent_turn_streams_final_answer_when_no_tools_available(
 
 
 def test_run_agent_turn_executes_a_tool_call_and_continues(monkeypatch, mock_session):
-    tool = ToolDefinition(name="get_temperature", description="", parameters={})
-    monkeypatch.setattr(agent_module.mcp_client, "list_tools", lambda: [tool])
+    tool = ToolDefinition(name="run_command", description="", parameters={})
+    monkeypatch.setattr(
+        agent_module.mcp_client, "list_tools", lambda allowed_tools=None: [tool]
+    )
 
     captured_conversations = []
 
@@ -257,7 +265,7 @@ def test_run_agent_turn_executes_a_tool_call_and_continues(monkeypatch, mock_ses
                 tool_calls=[
                     ToolCall(
                         call_id="call_0",
-                        name="get_temperature",
+                        name="run_command",
                         arguments={"city": "New York"},
                     )
                 ],
@@ -289,7 +297,7 @@ def test_run_agent_turn_executes_a_tool_call_and_continues(monkeypatch, mock_ses
     assert used_extra_env == {"LAD_CHAT_ID": "42"}
 
     tool_call_payload = events[0][1]
-    assert tool_call_payload["tool_name"] == "get_temperature"
+    assert tool_call_payload["tool_name"] == "run_command"
     assert json.loads(tool_call_payload["tool_arguments"]) == {"city": "New York"}
 
     tool_result_payload = events[1][1]
@@ -299,7 +307,7 @@ def test_run_agent_turn_executes_a_tool_call_and_continues(monkeypatch, mock_ses
     assert second_call_messages[-2]["role"] == "assistant"
     assert second_call_messages[-1] == {
         "role": "tool",
-        "tool_name": "get_temperature",
+        "tool_name": "run_command",
         "content": "22°C",
     }
 
@@ -307,8 +315,10 @@ def test_run_agent_turn_executes_a_tool_call_and_continues(monkeypatch, mock_ses
 def test_run_agent_turn_reports_tool_failures_back_to_the_model(
     monkeypatch, mock_session
 ):
-    tool = ToolDefinition(name="get_temperature", description="", parameters={})
-    monkeypatch.setattr(agent_module.mcp_client, "list_tools", lambda: [tool])
+    tool = ToolDefinition(name="run_command", description="", parameters={})
+    monkeypatch.setattr(
+        agent_module.mcp_client, "list_tools", lambda allowed_tools=None: [tool]
+    )
 
     call_count = {"value": 0}
 
@@ -318,7 +328,7 @@ def test_run_agent_turn_reports_tool_failures_back_to_the_model(
             return LLMTurn(
                 content="",
                 tool_calls=[
-                    ToolCall(call_id="call_0", name="get_temperature", arguments={})
+                    ToolCall(call_id="call_0", name="run_command", arguments={})
                 ],
             )
         return LLMTurn(content="Sorry, I couldn't check the weather.", tool_calls=[])
@@ -337,7 +347,7 @@ def test_run_agent_turn_reports_tool_failures_back_to_the_model(
     ]
 
     tool_result_payload = next(data for event, data in events if event == "tool_result")
-    assert "Error calling get_temperature" in tool_result_payload["content"]
+    assert "Error calling run_command" in tool_result_payload["content"]
     assert "boom" in tool_result_payload["content"]
 
     assert events[-1][0] == "done"
@@ -346,8 +356,10 @@ def test_run_agent_turn_reports_tool_failures_back_to_the_model(
 def test_run_agent_turn_forces_a_final_answer_at_the_iteration_cap(
     monkeypatch, mock_session
 ):
-    tool = ToolDefinition(name="get_temperature", description="", parameters={})
-    monkeypatch.setattr(agent_module.mcp_client, "list_tools", lambda: [tool])
+    tool = ToolDefinition(name="run_command", description="", parameters={})
+    monkeypatch.setattr(
+        agent_module.mcp_client, "list_tools", lambda allowed_tools=None: [tool]
+    )
     monkeypatch.setattr(agent_module.conf, "MAX_TOOL_ITERATIONS", 2)
 
     call_tool_invocations = []
@@ -357,9 +369,7 @@ def test_run_agent_turn_forces_a_final_answer_at_the_iteration_cap(
             return LLMTurn(content="Final answer.", tool_calls=[])
         return LLMTurn(
             content="",
-            tool_calls=[
-                ToolCall(call_id="call_0", name="get_temperature", arguments={})
-            ],
+            tool_calls=[ToolCall(call_id="call_0", name="run_command", arguments={})],
         )
 
     def fake_call_tool(name, arguments, extra_env=None):
@@ -379,3 +389,150 @@ def test_run_agent_turn_forces_a_final_answer_at_the_iteration_cap(
     assert len(call_tool_invocations) == 1
     assert events[-1][0] == "done"
     assert events[-1][1]["content"] == "Final answer."
+
+
+def test_run_agent_turn_raises_on_empty_final_content(monkeypatch, mock_session):
+    monkeypatch.setattr(
+        agent_module.mcp_client, "list_tools", lambda allowed_tools=None: []
+    )
+    monkeypatch.setattr(
+        agent_module,
+        "generate_turn",
+        lambda *, messages, tools, model=None: LLMTurn(content="   ", tool_calls=[]),
+    )
+
+    with pytest.raises(RuntimeError, match="empty response"):
+        list(
+            agent_module.run_agent_turn(
+                mock_session, chat_id=1, summary=None, history=[]
+            )
+        )
+
+
+def test_run_agent_turn_rejects_a_tool_call_outside_the_allowed_set(
+    monkeypatch, mock_session
+):
+    tool = ToolDefinition(name="run_command", description="", parameters={})
+    monkeypatch.setattr(
+        agent_module.mcp_client, "list_tools", lambda allowed_tools=None: [tool]
+    )
+
+    call_count = {"value": 0}
+
+    def fake_generate_turn(*, messages, tools, model=None):
+        call_count["value"] += 1
+        if call_count["value"] == 1:
+            return LLMTurn(
+                content="",
+                tool_calls=[
+                    ToolCall(call_id="call_0", name="delete_everything", arguments={})
+                ],
+            )
+        return LLMTurn(content="Can't do that.", tool_calls=[])
+
+    call_tool_calls = []
+
+    def fake_call_tool(name, arguments, extra_env=None):
+        call_tool_calls.append(name)
+        return "should not be reached"
+
+    monkeypatch.setattr(agent_module, "generate_turn", fake_generate_turn)
+    monkeypatch.setattr(agent_module.mcp_client, "call_tool", fake_call_tool)
+
+    events = [
+        _parse_sse(raw)
+        for raw in agent_module.run_agent_turn(
+            mock_session, chat_id=1, summary=None, history=[]
+        )
+    ]
+
+    assert call_tool_calls == []
+    tool_result_payload = next(data for event, data in events if event == "tool_result")
+    assert "not available in this mode" in tool_result_payload["content"]
+    assert events[-1][0] == "done"
+
+
+def test_run_chat_turn_uses_chat_system_prompt_and_model(monkeypatch, mock_session):
+    monkeypatch.setattr(
+        agent_module.mcp_client, "list_tools", lambda allowed_tools=None: []
+    )
+    monkeypatch.setattr(agent_module.conf, "OLLAMA_MODEL", "qwen3:8b")
+
+    captured = {}
+
+    def fake_generate_turn(*, messages, tools, model=None):
+        captured["messages"] = messages
+        captured["model"] = model
+        return LLMTurn(content="hi there", tool_calls=[])
+
+    monkeypatch.setattr(agent_module, "generate_turn", fake_generate_turn)
+
+    list(agent_module.run_chat_turn(mock_session, chat_id=1, summary=None, history=[]))
+
+    assert captured["messages"][0] == {
+        "role": "system",
+        "content": agent_module.CHAT_SYSTEM_PROMPT,
+    }
+    assert captured["model"] == "qwen3:8b"
+
+
+def test_run_chat_turn_only_offers_chat_scoped_tools(monkeypatch, mock_session):
+    captured_allowed = {}
+
+    def fake_list_tools(allowed_tools=None):
+        captured_allowed["value"] = allowed_tools
+        return []
+
+    monkeypatch.setattr(agent_module.mcp_client, "list_tools", fake_list_tools)
+    monkeypatch.setattr(
+        agent_module,
+        "generate_turn",
+        lambda *, messages, tools, model=None: LLMTurn(content="ok", tool_calls=[]),
+    )
+
+    list(agent_module.run_chat_turn(mock_session, chat_id=1, summary=None, history=[]))
+
+    assert captured_allowed["value"] == {"web_search", "recall_memory"}
+
+
+def test_run_chat_turn_executes_an_allowed_tool_call(monkeypatch, mock_session):
+    tool = ToolDefinition(name="web_search", description="", parameters={})
+    monkeypatch.setattr(
+        agent_module.mcp_client, "list_tools", lambda allowed_tools=None: [tool]
+    )
+
+    call_count = {"value": 0}
+
+    def fake_generate_turn(*, messages, tools, model=None):
+        call_count["value"] += 1
+        if call_count["value"] == 1:
+            return LLMTurn(
+                content="",
+                tool_calls=[
+                    ToolCall(
+                        call_id="call_0", name="web_search", arguments={"query": "x"}
+                    )
+                ],
+            )
+        return LLMTurn(content="Here's what I found.", tool_calls=[])
+
+    def fake_call_tool(name, arguments, extra_env=None):
+        return "search results"
+
+    monkeypatch.setattr(agent_module, "generate_turn", fake_generate_turn)
+    monkeypatch.setattr(agent_module.mcp_client, "call_tool", fake_call_tool)
+
+    events = [
+        _parse_sse(raw)
+        for raw in agent_module.run_chat_turn(
+            mock_session, chat_id=1, summary=None, history=[]
+        )
+    ]
+
+    assert [event for event, _ in events] == [
+        "tool_call",
+        "tool_result",
+        "chunk",
+        "done",
+    ]
+    assert events[-1][1]["content"] == "Here's what I found."

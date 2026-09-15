@@ -12,7 +12,7 @@ from lad.core.llm import (
 )
 from lad.core.mcp import mcp_client
 from lad.core.sse import format_sse_event
-from lad.helpers.llm import AGENT_SYSTEM_PROMPT
+from lad.helpers.llm import AGENT_SYSTEM_PROMPT, CHAT_SYSTEM_PROMPT
 from lad.helpers.messages import (
     create_message,
     create_tool_call_message,
@@ -26,6 +26,9 @@ from lad.schemas.llm import LLMTurn, ToolCall
 logger = logging.getLogger("Lad")
 
 CHUNK_SIZE = 40
+
+AGENT_TOOLS = {"run_command", "web_search", "recall_memory"}
+CHAT_TOOLS = {"web_search", "recall_memory"}
 
 
 def _chunk_text(text: str) -> Iterator[str]:
@@ -81,17 +84,19 @@ def _message_to_turn(message: Messages) -> dict[str, Any]:
     return {"role": message.role, "content": content}
 
 
-def run_agent_turn(
+def _run_tool_turn(
     db: Session,
     chat_id: int,
     summary: str | None,
     history: list[Messages],
+    *,
+    system_prompt: str,
+    model: str,
+    allowed_tools: set[str],
 ) -> Iterator[str]:
-    tools = mcp_client.list_tools()
+    tools = mcp_client.list_tools(allowed_tools=allowed_tools)
 
-    conversation: list[dict[str, Any]] = [
-        {"role": "system", "content": AGENT_SYSTEM_PROMPT}
-    ]
+    conversation: list[dict[str, Any]] = [{"role": "system", "content": system_prompt}]
 
     if summary:
         conversation.append(
@@ -109,10 +114,13 @@ def run_agent_turn(
         turn = generate_turn(
             messages=conversation,
             tools=None if is_last_iteration else tools,
-            model=conf.OLLAMA_AGENT_MODEL,
+            model=model,
         )
 
         if not turn.tool_calls:
+            if not turn.content.strip():
+                raise RuntimeError("LLM returned an empty response")
+
             for chunk in _chunk_text(turn.content):
                 yield format_sse_event("chunk", {"text": chunk})
 
@@ -137,7 +145,12 @@ def run_agent_turn(
             db.commit()
             yield sse_event_for_message("tool_call", tool_call_row)
 
-            result_content = _call_tool(call.name, call.arguments, chat_id)
+            if call.name not in allowed_tools:
+                result_content = (
+                    f"Error: tool '{call.name}' is not available in this mode."
+                )
+            else:
+                result_content = _call_tool(call.name, call.arguments, chat_id)
 
             tool_result_row = create_tool_result_message(
                 db=db,
@@ -150,3 +163,37 @@ def run_agent_turn(
             yield sse_event_for_message("tool_result", tool_result_row)
 
             conversation.append(build_tool_result_message(call.name, result_content))
+
+
+def run_agent_turn(
+    db: Session,
+    chat_id: int,
+    summary: str | None,
+    history: list[Messages],
+) -> Iterator[str]:
+    yield from _run_tool_turn(
+        db,
+        chat_id,
+        summary,
+        history,
+        system_prompt=AGENT_SYSTEM_PROMPT,
+        model=conf.OLLAMA_AGENT_MODEL,
+        allowed_tools=AGENT_TOOLS,
+    )
+
+
+def run_chat_turn(
+    db: Session,
+    chat_id: int,
+    summary: str | None,
+    history: list[Messages],
+) -> Iterator[str]:
+    yield from _run_tool_turn(
+        db,
+        chat_id,
+        summary,
+        history,
+        system_prompt=CHAT_SYSTEM_PROMPT,
+        model=conf.OLLAMA_MODEL,
+        allowed_tools=CHAT_TOOLS,
+    )
