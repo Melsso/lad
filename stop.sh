@@ -8,7 +8,7 @@ docker compose down
 
 echo "Stopping Postgres..."
 
-docker stop local_lad_db || true
+docker stop lad-db || true
 
 OLLAMA_PID_FILE=".ollama.pid"
 

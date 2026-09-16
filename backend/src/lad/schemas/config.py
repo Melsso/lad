@@ -26,6 +26,7 @@ class Settings(BaseSettings):
 
     MCP_SERVERS: str = "[]"
     MAX_TOOL_ITERATIONS: int = 3
+    AGENT_MAX_TOOL_ITERATIONS: int = 8
 
     TAVILY_API_KEY: str = ""
 

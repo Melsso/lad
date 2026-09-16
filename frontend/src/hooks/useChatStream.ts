@@ -74,7 +74,7 @@ export function useChatStream(
 
         const lastMessage = result[result.length - 1];
 
-        if (lastMessage && lastMessage.role === "user") {
+        if (lastMessage && lastMessage.role !== "assistant") {
           lastAttemptRef.current = { mode: "regenerate", chatId };
           setError("No reply was generated for this message.");
         }

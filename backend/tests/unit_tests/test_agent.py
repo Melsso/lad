@@ -360,7 +360,7 @@ def test_run_agent_turn_forces_a_final_answer_at_the_iteration_cap(
     monkeypatch.setattr(
         agent_module.mcp_client, "list_tools", lambda allowed_tools=None: [tool]
     )
-    monkeypatch.setattr(agent_module.conf, "MAX_TOOL_ITERATIONS", 2)
+    monkeypatch.setattr(agent_module.conf, "AGENT_MAX_TOOL_ITERATIONS", 2)
 
     call_tool_invocations = []
 
@@ -536,3 +536,26 @@ def test_run_chat_turn_executes_an_allowed_tool_call(monkeypatch, mock_session):
         "done",
     ]
     assert events[-1][1]["content"] == "Here's what I found."
+
+
+def test_run_chat_turn_and_run_agent_turn_use_independent_iteration_caps(
+    monkeypatch, mock_session
+):
+    tool = ToolDefinition(name="web_search", description="", parameters={})
+    monkeypatch.setattr(
+        agent_module.mcp_client, "list_tools", lambda allowed_tools=None: [tool]
+    )
+    monkeypatch.setattr(agent_module.conf, "MAX_TOOL_ITERATIONS", 1)
+    monkeypatch.setattr(agent_module.conf, "AGENT_MAX_TOOL_ITERATIONS", 5)
+
+    captured_tools_arg = []
+
+    def fake_generate_turn(*, messages, tools, model=None):
+        captured_tools_arg.append(tools)
+        return LLMTurn(content="final", tool_calls=[])
+
+    monkeypatch.setattr(agent_module, "generate_turn", fake_generate_turn)
+
+    list(agent_module.run_chat_turn(mock_session, chat_id=1, summary=None, history=[]))
+
+    assert captured_tools_arg == [None]

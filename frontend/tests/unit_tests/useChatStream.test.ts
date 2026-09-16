@@ -88,6 +88,31 @@ describe("useChatStream", () => {
     expect(mockedCreateChat).not.toHaveBeenCalled();
   });
 
+  it("detects a turn that failed mid tool-call and enables retry", async () => {
+    mockedGetChatMessages.mockResolvedValue([
+      makeMessage({ id: 1, role: "user", content: "unzip this" }),
+      makeMessage({ id: 2, role: "tool_call", content: "" }),
+      makeMessage({ id: 3, role: "tool_result", content: "extracted" }),
+    ]);
+    mockedRetryMessage.mockResolvedValue(undefined);
+
+    const { result } = renderHook(() => useChatStream(1, vi.fn()));
+
+    await waitFor(() =>
+      expect(result.current.error).toBe(
+        "No reply was generated for this message.",
+      ),
+    );
+
+    act(() => {
+      result.current.retry();
+    });
+
+    await waitFor(() =>
+      expect(mockedRetryMessage).toHaveBeenCalledWith(1, expect.anything()),
+    );
+  });
+
   it("sendMessage on an existing chat adds an optimistic message and streams the reply", async () => {
     mockedGetChatMessages.mockResolvedValue([]);
     const streamer = controllableStreamer();

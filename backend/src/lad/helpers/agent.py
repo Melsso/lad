@@ -93,6 +93,7 @@ def _run_tool_turn(
     system_prompt: str,
     model: str,
     allowed_tools: set[str],
+    max_iterations: int,
 ) -> Iterator[str]:
     tools = mcp_client.list_tools(allowed_tools=allowed_tools)
 
@@ -108,8 +109,8 @@ def _run_tool_turn(
 
     conversation.extend(_message_to_turn(message) for message in history)
 
-    for iteration in range(conf.MAX_TOOL_ITERATIONS):
-        is_last_iteration = iteration == conf.MAX_TOOL_ITERATIONS - 1
+    for iteration in range(max_iterations):
+        is_last_iteration = iteration == max_iterations - 1
 
         turn = generate_turn(
             messages=conversation,
@@ -179,6 +180,7 @@ def run_agent_turn(
         system_prompt=AGENT_SYSTEM_PROMPT,
         model=conf.OLLAMA_AGENT_MODEL,
         allowed_tools=AGENT_TOOLS,
+        max_iterations=conf.AGENT_MAX_TOOL_ITERATIONS,
     )
 
 
@@ -196,4 +198,5 @@ def run_chat_turn(
         system_prompt=CHAT_SYSTEM_PROMPT,
         model=conf.OLLAMA_MODEL,
         allowed_tools=CHAT_TOOLS,
+        max_iterations=conf.MAX_TOOL_ITERATIONS,
     )

@@ -224,7 +224,7 @@ def stream_chat_retry(chat_id: int) -> Iterator[str]:
                 .first()
             )
 
-            if last_message is None or last_message.role != "user":
+            if last_message is None or last_message.role == "assistant":
                 yield format_sse_event("error", {"detail": "Nothing to retry"})
                 return
 

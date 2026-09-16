@@ -1,7 +1,9 @@
 import { useEffect, useRef } from "react";
 
 import type { ChatMessage as ChatMessageType } from "../../types/chat";
+import { groupMessagesForDisplay } from "../../context/toolActivity";
 import { ChatMessage } from "./ChatMessage";
+import { ToolActivity } from "./ToolActivity";
 
 interface ChatWindowProps {
   messages: ChatMessageType[];
@@ -10,6 +12,7 @@ interface ChatWindowProps {
   isStreaming: boolean;
   error: string | null;
   onRetry: () => void;
+  mode?: "chat" | "agent";
 }
 
 export function ChatWindow({
@@ -19,6 +22,7 @@ export function ChatWindow({
   isStreaming,
   error,
   onRetry,
+  mode = "chat",
 }: ChatWindowProps) {
   const bottomRef = useRef<HTMLDivElement>(null);
 
@@ -26,15 +30,26 @@ export function ChatWindow({
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages, streamingText, error]);
 
+  const renderItems = groupMessagesForDisplay(messages);
+
   return (
     <div className="h-full min-h-0 overflow-y-auto px-8 py-8">
       <div className="mx-auto flex max-w-3xl flex-col gap-6">
         {loading ? (
           <p className="font-mono text-xs text-text-dim">loading_messages...</p>
         ) : (
-          messages.map((message) => (
-            <ChatMessage key={message.id} message={message} />
-          ))
+          renderItems.map((item) =>
+            item.kind === "message" ? (
+              <ChatMessage key={item.message.id} message={item.message} />
+            ) : (
+              <ToolActivity
+                key={item.call.id}
+                call={item.call}
+                result={item.result}
+                mode={mode}
+              />
+            ),
+          )
         )}
 
         {isStreaming && (

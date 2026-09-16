@@ -386,6 +386,42 @@ def test_stream_chat_retry_errors_when_nothing_to_retry(
     assert "Nothing to retry" in events[0]
 
 
+def test_stream_chat_retry_treats_trailing_tool_result_as_retryable(
+    monkeypatch, session_builder, patch_db_session, chat_factory, message_factory
+):
+    chat = chat_factory(1, mode="agent")
+    messages = [
+        message_factory(1, role="user", content="unzip this and describe it"),
+        message_factory(
+            2,
+            role="tool_call",
+            content="",
+            tool_call_id="call_0",
+            tool_name="run_command",
+            tool_arguments='{"command": "unzip x.zip"}',
+        ),
+        message_factory(
+            3,
+            role="tool_result",
+            content="extracted",
+            tool_call_id="call_0",
+            tool_name="run_command",
+        ),
+    ]
+    session = session_builder(chat=chat, messages=messages, summary=None)
+    patch_db_session(session)
+
+    def fake_run_agent_turn(db, chat_id, summary, active_messages):
+        yield format_sse_event("done", {"id": 4, "content": "it's a watchdog tool"})
+
+    monkeypatch.setattr(chat_module, "run_agent_turn", fake_run_agent_turn)
+
+    events = list(chat_module.stream_chat_retry(chat_id=1))
+
+    assert not any("Nothing to retry" in e for e in events)
+    assert any("event: done" in e for e in events)
+
+
 def test_stream_chat_retry_success_does_not_create_user_message(
     monkeypatch, session_builder, patch_db_session, chat_factory, message_factory
 ):

@@ -80,6 +80,7 @@ export function ChatPage() {
             isStreaming={isStreaming}
             error={error}
             onRetry={retry}
+            mode={activeMode ?? undefined}
           />
         ) : (
           <div className="flex flex-1 flex-col items-center justify-center gap-2 px-8 text-center">

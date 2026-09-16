@@ -9,9 +9,8 @@ MIN_RESULTS = 3
 
 @server.tool()
 def web_search(query: str, max_results: int = 5) -> str:
-    """Searches the live web for current information not available in the
-    local codebase or docs. Use this for anything time-sensitive, external,
-    or outside this project's own files."""
+    """Searches the live web for current, external, or time-sensitive
+    information not already available from context or general knowledge."""
     max_results = max(max_results, MIN_RESULTS)
     results = search_web(query, max_results=max_results)
 
