@@ -1,0 +1,30 @@
+DB_USER=postgres
+DB_PASSWORD=postgres
+DB_NAME=local_lad_db
+DB_HOST=host.docker.internal
+# DB_HOST=localhost
+DB_PORT=5432
+
+OLLAMA_HOST=http://host.docker.internal:11434
+OLLAMA_MODEL=qwen3:8b
+OLLAMA_AGENT_MODEL=gemma4:12b
+OLLAMA_EMBED_MODEL=embeddinggemma
+OLLAMA_TIMEOUT=120.0
+OLLAMA_NUM_CTX=8192
+EMBEDDING_DIM=768
+
+SUMMARY_THRESHOLD=20
+RECENT_MESSAGES_TO_KEEP=8
+AGENT_SUMMARY_THRESHOLD=8
+AGENT_RECENT_MESSAGES_TO_KEEP=4
+
+# JSON list of MCP servers to connect to, e.g.
+# MCP_SERVERS=[{"name": "memory", "command": "python", "args": ["-m", "lad.tools.memory_server"]}]
+MCP_SERVERS=[{"name": "sandbox", "command": "python", "args": ["-m", "lad.tools.sandbox_server"]}, {"name": "web_search", "command": "python", "args": ["-m", "lad.tools.web_search_server"]}, {"name": "memory", "command": "python", "args": ["-m", "lad.tools.memory_server"]}]
+MAX_TOOL_ITERATIONS=3
+AGENT_MAX_TOOL_ITERATIONS=8
+
+# Get one at https://tavily.com
+TAVILY_API_KEY=your-tavily-api-key-here
+
+SANDBOX_URL=http://sandbox:8000
