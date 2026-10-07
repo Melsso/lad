@@ -1,3 +1,6 @@
+import time
+
+
 def test_health_returns_ok(client):
     response = client.get("/health")
 
@@ -84,3 +87,26 @@ def test_execute_rejects_timeout_above_maximum(client):
     )
 
     assert response.status_code == 422
+
+
+def test_execute_rejects_non_numeric_chat_id(client):
+    response = client.post(
+        "/execute", json={"chat_id": "../x", "command": "pwd", "timeout": 5}
+    )
+
+    assert response.status_code == 422
+
+
+def test_execute_kills_background_children_on_timeout(client, tmp_path):
+    client.post(
+        "/execute",
+        json={
+            "chat_id": "1",
+            "command": "(sleep 2; echo late > late.txt) & sleep 10",
+            "timeout": 1,
+        },
+    )
+
+    time.sleep(2.5)
+
+    assert not (tmp_path / "1" / "late.txt").exists()

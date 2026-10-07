@@ -94,7 +94,7 @@ def _format_messages(messages: Sequence[Messages]) -> str:
     return "\n".join(_format_message(message) for message in messages)
 
 
-def generate_summary(
+async def generate_summary(
     *,
     existing_summary: str | None,
     messages: Sequence[Messages],
@@ -120,7 +120,7 @@ NEW CONVERSATION MESSAGES:
 Create the updated conversation summary now.
 """
 
-    return generate_content(
+    return await generate_content(
         contents=prompt,
         system_instruction=SUMMARY_SYSTEM_PROMPT,
         temperature=0.2,

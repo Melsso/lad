@@ -1,8 +1,14 @@
-from unittest.mock import MagicMock
+from unittest.mock import AsyncMock, MagicMock
 
 from sqlalchemy.exc import SQLAlchemyError
 
 from lad.routes import chat as chat_routes
+
+CREATED_AT = "2026-01-01T00:00:00+00:00"
+
+
+def _db_error():
+    return AsyncMock(side_effect=SQLAlchemyError("boom"))
 
 
 def test_create_chat_rejects_invalid_mode(client):
@@ -12,10 +18,8 @@ def test_create_chat_rejects_invalid_mode(client):
 
 
 def test_create_chat_success(monkeypatch, client):
-    created = MagicMock(
-        id=1, title="hello world", mode="chat", created_at="2026-01-01T00:00:00+00:00"
-    )
-    monkeypatch.setattr(chat_routes, "create_chat", lambda db, title, mode: created)
+    created = MagicMock(id=1, title="hello world", mode="chat", created_at=CREATED_AT)
+    monkeypatch.setattr(chat_routes, "create_chat", AsyncMock(return_value=created))
 
     response = client.post("/chat/create", json={"title": "hello world"})
 
@@ -26,11 +30,9 @@ def test_create_chat_success(monkeypatch, client):
 def test_create_chat_defaults_when_no_title(monkeypatch, client):
     captured = {}
 
-    def fake_create_chat(db, title, mode):
+    async def fake_create_chat(db, title, mode):
         captured["title"] = title
-        return MagicMock(
-            id=1, title=title, mode=mode, created_at="2026-01-01T00:00:00+00:00"
-        )
+        return MagicMock(id=1, title=title, mode=mode, created_at=CREATED_AT)
 
     monkeypatch.setattr(chat_routes, "create_chat", fake_create_chat)
 
@@ -43,16 +45,13 @@ def test_create_chat_defaults_when_no_title(monkeypatch, client):
 def test_create_chat_truncates_long_title(monkeypatch, client):
     captured = {}
 
-    def fake_create_chat(db, title, mode):
+    async def fake_create_chat(db, title, mode):
         captured["title"] = title
-        return MagicMock(
-            id=1, title=title, mode=mode, created_at="2026-01-01T00:00:00+00:00"
-        )
+        return MagicMock(id=1, title=title, mode=mode, created_at=CREATED_AT)
 
     monkeypatch.setattr(chat_routes, "create_chat", fake_create_chat)
 
-    long_message = "x" * 80
-    response = client.post("/chat/create", json={"title": long_message})
+    response = client.post("/chat/create", json={"title": "x" * 80})
 
     assert response.status_code == 200
     assert len(captured["title"]) == 50
@@ -60,10 +59,7 @@ def test_create_chat_truncates_long_title(monkeypatch, client):
 
 
 def test_create_chat_db_error(monkeypatch, client):
-    def raise_error(db, title, mode):
-        raise SQLAlchemyError("boom")
-
-    monkeypatch.setattr(chat_routes, "create_chat", raise_error)
+    monkeypatch.setattr(chat_routes, "create_chat", _db_error())
 
     response = client.post("/chat/create", json={"title": "hi"})
 
@@ -71,11 +67,9 @@ def test_create_chat_db_error(monkeypatch, client):
 
 
 def test_update_chat_title_success(monkeypatch, client):
-    updated = MagicMock(
-        id=1, title="New Title", mode="chat", created_at="2026-01-01T00:00:00+00:00"
-    )
+    updated = MagicMock(id=1, title="New Title", mode="chat", created_at=CREATED_AT)
     monkeypatch.setattr(
-        chat_routes, "update_chat_title", lambda db, chat_id, title: updated
+        chat_routes, "update_chat_title", AsyncMock(return_value=updated)
     )
 
     response = client.patch("/chat/title", json={"chat_id": 1, "title": "New Title"})
@@ -91,9 +85,7 @@ def test_update_chat_title_rejects_empty_title(client):
 
 
 def test_update_chat_title_not_found(monkeypatch, client):
-    monkeypatch.setattr(
-        chat_routes, "update_chat_title", lambda db, chat_id, title: None
-    )
+    monkeypatch.setattr(chat_routes, "update_chat_title", AsyncMock(return_value=None))
 
     response = client.patch("/chat/title", json={"chat_id": 999, "title": "New Title"})
 
@@ -101,10 +93,7 @@ def test_update_chat_title_not_found(monkeypatch, client):
 
 
 def test_update_chat_title_db_error(monkeypatch, client):
-    def raise_error(db, chat_id, title):
-        raise SQLAlchemyError("boom")
-
-    monkeypatch.setattr(chat_routes, "update_chat_title", raise_error)
+    monkeypatch.setattr(chat_routes, "update_chat_title", _db_error())
 
     response = client.patch("/chat/title", json={"chat_id": 1, "title": "New Title"})
 
@@ -118,11 +107,11 @@ def test_get_chat_messages_success(monkeypatch, client):
             "chat_id": 1,
             "content": "hi",
             "role": "user",
-            "created_at": "2026-01-01T00:00:00+00:00",
+            "created_at": CREATED_AT,
         }
     ]
     monkeypatch.setattr(
-        chat_routes, "get_chat_messages", lambda db, chat_id: fake_messages
+        chat_routes, "get_chat_messages", AsyncMock(return_value=fake_messages)
     )
 
     response = client.get("/chat/messages", params={"chat_id": 1})
@@ -132,10 +121,7 @@ def test_get_chat_messages_success(monkeypatch, client):
 
 
 def test_get_chat_messages_db_error(monkeypatch, client):
-    def raise_error(db, chat_id):
-        raise SQLAlchemyError("boom")
-
-    monkeypatch.setattr(chat_routes, "get_chat_messages", raise_error)
+    monkeypatch.setattr(chat_routes, "get_chat_messages", _db_error())
 
     response = client.get("/chat/messages", params={"chat_id": 1})
 
@@ -143,10 +129,8 @@ def test_get_chat_messages_db_error(monkeypatch, client):
 
 
 def test_get_chat_endpoint_success(monkeypatch, client):
-    chat = MagicMock(
-        id=1, title="hello", mode="chat", created_at="2026-01-01T00:00:00+00:00"
-    )
-    monkeypatch.setattr(chat_routes, "get_chat", lambda db, chat_id: chat)
+    chat = MagicMock(id=1, title="hello", mode="chat", created_at=CREATED_AT)
+    monkeypatch.setattr(chat_routes, "get_chat", AsyncMock(return_value=chat))
 
     response = client.get("/chat/1")
 
@@ -155,7 +139,7 @@ def test_get_chat_endpoint_success(monkeypatch, client):
 
 
 def test_get_chat_endpoint_not_found(monkeypatch, client):
-    monkeypatch.setattr(chat_routes, "get_chat", lambda db, chat_id: None)
+    monkeypatch.setattr(chat_routes, "get_chat", AsyncMock(return_value=None))
 
     response = client.get("/chat/999")
 
@@ -163,10 +147,7 @@ def test_get_chat_endpoint_not_found(monkeypatch, client):
 
 
 def test_get_chat_endpoint_db_error(monkeypatch, client):
-    def raise_error(db, chat_id):
-        raise SQLAlchemyError("boom")
-
-    monkeypatch.setattr(chat_routes, "get_chat", raise_error)
+    monkeypatch.setattr(chat_routes, "get_chat", _db_error())
 
     response = client.get("/chat/1")
 
@@ -174,7 +155,7 @@ def test_get_chat_endpoint_db_error(monkeypatch, client):
 
 
 def test_get_chat_endpoint_does_not_shadow_messages_route(monkeypatch, client):
-    monkeypatch.setattr(chat_routes, "get_chat_messages", lambda db, chat_id: [])
+    monkeypatch.setattr(chat_routes, "get_chat_messages", AsyncMock(return_value=[]))
 
     response = client.get("/chat/messages", params={"chat_id": 1})
 
@@ -183,7 +164,7 @@ def test_get_chat_endpoint_does_not_shadow_messages_route(monkeypatch, client):
 
 
 def test_stream_msg_chat_not_found(monkeypatch, client):
-    monkeypatch.setattr(chat_routes, "get_chat", lambda db, chat_id: None)
+    monkeypatch.setattr(chat_routes, "get_chat", AsyncMock(return_value=None))
 
     response = client.post(
         "/chat/msg/stream", data={"chat_id": 999, "msg": "hi"}, files=[]
@@ -193,10 +174,7 @@ def test_stream_msg_chat_not_found(monkeypatch, client):
 
 
 def test_stream_msg_db_error_on_lookup(monkeypatch, client):
-    def raise_error(db, chat_id):
-        raise SQLAlchemyError("boom")
-
-    monkeypatch.setattr(chat_routes, "get_chat", raise_error)
+    monkeypatch.setattr(chat_routes, "get_chat", _db_error())
 
     response = client.post(
         "/chat/msg/stream", data={"chat_id": 1, "msg": "hi"}, files=[]
@@ -206,10 +184,11 @@ def test_stream_msg_db_error_on_lookup(monkeypatch, client):
 
 
 def test_stream_msg_success_returns_sse_stream(monkeypatch, client):
-    chat = MagicMock(id=1)
-    monkeypatch.setattr(chat_routes, "get_chat", lambda db, chat_id: chat)
+    monkeypatch.setattr(
+        chat_routes, "get_chat", AsyncMock(return_value=MagicMock(id=1))
+    )
 
-    def fake_stream(chat_id, msg, attached_filenames=None):
+    async def fake_stream(chat_id, msg, attached_filenames=None):
         yield 'event: chunk\ndata: {"text": "hi"}\n\n'
         yield 'event: done\ndata: {"id": 1}\n\n'
 
@@ -226,8 +205,9 @@ def test_stream_msg_success_returns_sse_stream(monkeypatch, client):
 
 
 def test_stream_msg_rejects_too_many_files(monkeypatch, client):
-    chat = MagicMock(id=1)
-    monkeypatch.setattr(chat_routes, "get_chat", lambda db, chat_id: chat)
+    monkeypatch.setattr(
+        chat_routes, "get_chat", AsyncMock(return_value=MagicMock(id=1))
+    )
 
     def raise_too_many(files):
         raise ValueError("Too many files attached")
@@ -245,8 +225,9 @@ def test_stream_msg_rejects_too_many_files(monkeypatch, client):
 
 
 def test_stream_msg_rejects_invalid_extension(monkeypatch, client):
-    chat = MagicMock(id=1)
-    monkeypatch.setattr(chat_routes, "get_chat", lambda db, chat_id: chat)
+    monkeypatch.setattr(
+        chat_routes, "get_chat", AsyncMock(return_value=MagicMock(id=1))
+    )
 
     def raise_bad_extension(files):
         raise ValueError("File type '.exe' is not allowed: virus.exe")
@@ -264,14 +245,15 @@ def test_stream_msg_rejects_invalid_extension(monkeypatch, client):
 
 
 def test_stream_msg_saves_uploaded_files_and_passes_filenames(monkeypatch, client):
-    chat = MagicMock(id=1)
-    monkeypatch.setattr(chat_routes, "get_chat", lambda db, chat_id: chat)
+    monkeypatch.setattr(
+        chat_routes, "get_chat", AsyncMock(return_value=MagicMock(id=1))
+    )
     monkeypatch.setattr(chat_routes, "validate_uploads", lambda files: None)
     monkeypatch.setattr(chat_routes, "save_uploads", lambda chat_id, files: ["main.py"])
 
     captured = {}
 
-    def fake_stream(chat_id, msg, attached_filenames=None):
+    async def fake_stream(chat_id, msg, attached_filenames=None):
         captured["attached_filenames"] = attached_filenames
         yield 'event: done\ndata: {"id": 1}\n\n'
 
@@ -288,15 +270,16 @@ def test_stream_msg_saves_uploaded_files_and_passes_filenames(monkeypatch, clien
 
 
 def test_stream_msg_ignores_empty_file_part(monkeypatch, client):
-    chat = MagicMock(id=1)
-    monkeypatch.setattr(chat_routes, "get_chat", lambda db, chat_id: chat)
+    monkeypatch.setattr(
+        chat_routes, "get_chat", AsyncMock(return_value=MagicMock(id=1))
+    )
 
     validate_calls = []
     monkeypatch.setattr(
         chat_routes, "validate_uploads", lambda files: validate_calls.append(files)
     )
 
-    def fake_stream(chat_id, msg, attached_filenames=None):
+    async def fake_stream(chat_id, msg, attached_filenames=None):
         yield 'event: done\ndata: {"id": 1}\n\n'
 
     monkeypatch.setattr(chat_routes, "stream_chat_msg", fake_stream)
@@ -312,7 +295,7 @@ def test_stream_msg_ignores_empty_file_part(monkeypatch, client):
 
 
 def test_retry_msg_chat_not_found(monkeypatch, client):
-    monkeypatch.setattr(chat_routes, "get_chat", lambda db, chat_id: None)
+    monkeypatch.setattr(chat_routes, "get_chat", AsyncMock(return_value=None))
 
     response = client.post("/chat/msg/retry", json={"chat_id": 999})
 
@@ -320,10 +303,7 @@ def test_retry_msg_chat_not_found(monkeypatch, client):
 
 
 def test_retry_msg_db_error_on_lookup(monkeypatch, client):
-    def raise_error(db, chat_id):
-        raise SQLAlchemyError("boom")
-
-    monkeypatch.setattr(chat_routes, "get_chat", raise_error)
+    monkeypatch.setattr(chat_routes, "get_chat", _db_error())
 
     response = client.post("/chat/msg/retry", json={"chat_id": 1})
 
@@ -331,10 +311,11 @@ def test_retry_msg_db_error_on_lookup(monkeypatch, client):
 
 
 def test_retry_msg_success_returns_sse_stream(monkeypatch, client):
-    chat = MagicMock(id=1)
-    monkeypatch.setattr(chat_routes, "get_chat", lambda db, chat_id: chat)
+    monkeypatch.setattr(
+        chat_routes, "get_chat", AsyncMock(return_value=MagicMock(id=1))
+    )
 
-    def fake_retry(chat_id):
+    async def fake_retry(chat_id):
         yield 'event: done\ndata: {"id": 2}\n\n'
 
     monkeypatch.setattr(chat_routes, "stream_chat_retry", fake_retry)
@@ -346,27 +327,30 @@ def test_retry_msg_success_returns_sse_stream(monkeypatch, client):
 
 
 def test_delete_chat_success(monkeypatch, client):
-    monkeypatch.setattr(chat_routes, "delete_chat", lambda db, chat_id: True)
+    monkeypatch.setattr(chat_routes, "delete_chat", AsyncMock(return_value=True))
+    cleaned: list[int] = []
+    monkeypatch.setattr(chat_routes, "delete_chat_sandbox", cleaned.append)
 
     response = client.delete("/chat/1")
 
     assert response.status_code == 200
     assert response.json()["status"] == "deleted"
+    assert cleaned == [1]
 
 
 def test_delete_chat_not_found(monkeypatch, client):
-    monkeypatch.setattr(chat_routes, "delete_chat", lambda db, chat_id: False)
+    monkeypatch.setattr(chat_routes, "delete_chat", AsyncMock(return_value=False))
+    cleaned: list[int] = []
+    monkeypatch.setattr(chat_routes, "delete_chat_sandbox", cleaned.append)
 
     response = client.delete("/chat/999")
 
     assert response.status_code == 404
+    assert cleaned == []
 
 
 def test_delete_chat_db_error(monkeypatch, client):
-    def raise_error(db, chat_id):
-        raise SQLAlchemyError("boom")
-
-    monkeypatch.setattr(chat_routes, "delete_chat", raise_error)
+    monkeypatch.setattr(chat_routes, "delete_chat", _db_error())
 
     response = client.delete("/chat/1")
 

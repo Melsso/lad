@@ -1,14 +1,14 @@
 import json
 
-from sqlalchemy.orm import Session
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from lad.core.sse import format_sse_event
 from lad.models.db import Messages
 from lad.schemas.chat import ChatMessageResponse
 
 
-def create_message(
-    db: Session,
+async def create_message(
+    db: AsyncSession,
     chat_id: int,
     role: str,
     content: str,
@@ -29,15 +29,15 @@ def create_message(
     )
 
     db.add(message)
-    db.flush()
+    await db.flush()
 
     return message
 
 
-def create_tool_call_message(
-    db: Session, chat_id: int, call_id: str, tool_name: str, arguments: dict
+async def create_tool_call_message(
+    db: AsyncSession, chat_id: int, call_id: str, tool_name: str, arguments: dict
 ) -> Messages:
-    return create_message(
+    return await create_message(
         db=db,
         chat_id=chat_id,
         role="tool_call",
@@ -48,10 +48,10 @@ def create_tool_call_message(
     )
 
 
-def create_tool_result_message(
-    db: Session, chat_id: int, call_id: str, tool_name: str, content: str
+async def create_tool_result_message(
+    db: AsyncSession, chat_id: int, call_id: str, tool_name: str, content: str
 ) -> Messages:
-    return create_message(
+    return await create_message(
         db=db,
         chat_id=chat_id,
         role="tool_result",

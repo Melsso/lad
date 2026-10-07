@@ -1,19 +1,38 @@
 import pytest
+import pytest_asyncio
 from sqlalchemy import text
 from sqlalchemy.exc import SQLAlchemyError
-from sqlalchemy.orm import Session, sessionmaker
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
+from sqlalchemy.pool import NullPool
 
 from lad.core import db as db_module
 
 
-class TrackedSession(Session):
+class TrackedSession(AsyncSession):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.close_calls = 0
 
-    def close(self):
+    async def close(self):
         self.close_calls += 1
-        super().close()
+        await super().close()
+
+
+def _close_calls(session) -> int:
+    return session.close_calls
+
+
+@pytest_asyncio.fixture
+async def async_engine(database_url):
+    engine = create_async_engine(database_url, poolclass=NullPool)
+
+    yield engine
+
+    await engine.dispose()
+
+
+def _tracked_factory(engine):
+    return async_sessionmaker(bind=engine, class_=TrackedSession)
 
 
 def _point_conf_at_container(monkeypatch, postgres_container):
@@ -30,143 +49,148 @@ def _point_conf_at_container(monkeypatch, postgres_container):
     )
 
 
-def test_init_db_connects_and_sets_up_session_factory(monkeypatch, postgres_container):
+async def test_init_db_connects_and_sets_up_session_factory(
+    monkeypatch, postgres_container
+):
     _point_conf_at_container(monkeypatch, postgres_container)
     monkeypatch.setattr(db_module, "engine", None)
     monkeypatch.setattr(db_module, "SessionLocal", None)
 
-    db_module.init_db()
+    await db_module.init_db()
 
     try:
         assert db_module.engine is not None
         assert db_module.SessionLocal is not None
 
-        session = db_module.SessionLocal()
-        try:
-            assert session.execute(text("SELECT 1")).scalar() == 1
-        finally:
-            session.close()
+        async with db_module.SessionLocal() as session:
+            assert (await session.execute(text("SELECT 1"))).scalar() == 1
     finally:
-        if db_module.engine is not None:
-            db_module.engine.dispose()
+        await db_module.dispose_db()
 
 
-def test_init_db_retries_on_failure_then_succeeds(monkeypatch, postgres_container):
+async def test_init_db_retries_on_failure_then_succeeds(
+    monkeypatch, postgres_container
+):
     _point_conf_at_container(monkeypatch, postgres_container)
     monkeypatch.setattr(db_module, "engine", None)
     monkeypatch.setattr(db_module, "SessionLocal", None)
+    monkeypatch.setattr(db_module, "RETRY_DELAY_SECONDS", 0)
 
-    sleep_calls = []
-    monkeypatch.setattr(
-        db_module.time, "sleep", lambda seconds: sleep_calls.append(seconds)
-    )
-
-    real_create_engine = db_module.create_engine
+    real_prepare_schema = db_module._prepare_schema
     attempts = {"count": 0}
 
-    def flaky_create_engine(url, echo=False):
+    async def flaky_prepare_schema(db_engine):
         attempts["count"] += 1
         if attempts["count"] == 1:
             raise SQLAlchemyError("simulated connection failure")
-        return real_create_engine(url, echo=echo)
+        await real_prepare_schema(db_engine)
 
-    monkeypatch.setattr(db_module, "create_engine", flaky_create_engine)
+    monkeypatch.setattr(db_module, "_prepare_schema", flaky_prepare_schema)
 
-    db_module.init_db()
+    await db_module.init_db()
 
     try:
         assert attempts["count"] == 2
-        assert sleep_calls == [30]
         assert db_module.engine is not None
         assert db_module.SessionLocal is not None
     finally:
-        if db_module.engine is not None:
-            db_module.engine.dispose()
+        await db_module.dispose_db()
 
 
-def test_get_db_raises_when_uninitialized(monkeypatch):
+async def test_session_factory_stays_unset_until_init_succeeds(
+    monkeypatch, postgres_container
+):
+    _point_conf_at_container(monkeypatch, postgres_container)
+    monkeypatch.setattr(db_module, "engine", None)
+    monkeypatch.setattr(db_module, "SessionLocal", None)
+    monkeypatch.setattr(db_module, "RETRY_DELAY_SECONDS", 0)
+
+    observed = []
+    real_prepare_schema = db_module._prepare_schema
+
+    async def observing_prepare_schema(db_engine):
+        observed.append(db_module.SessionLocal)
+        await real_prepare_schema(db_engine)
+
+    monkeypatch.setattr(db_module, "_prepare_schema", observing_prepare_schema)
+
+    await db_module.init_db()
+
+    try:
+        assert observed == [None]
+        assert db_module.SessionLocal is not None
+    finally:
+        await db_module.dispose_db()
+
+
+async def test_get_db_raises_when_uninitialized(monkeypatch):
     monkeypatch.setattr(db_module, "SessionLocal", None)
 
     generator = db_module.get_db()
 
     with pytest.raises(RuntimeError, match="not initialized"):
-        next(generator)
+        await anext(generator)
 
 
-def test_get_db_yields_a_working_session_and_closes_it(monkeypatch, postgres_engine):
-    monkeypatch.setattr(
-        db_module,
-        "SessionLocal",
-        sessionmaker(bind=postgres_engine, class_=TrackedSession),
-    )
+async def test_get_db_yields_a_working_session_and_closes_it(monkeypatch, async_engine):
+    monkeypatch.setattr(db_module, "SessionLocal", _tracked_factory(async_engine))
 
     generator = db_module.get_db()
-    session = next(generator)
+    session = await anext(generator)
 
-    assert session.execute(text("SELECT 1")).scalar() == 1
-    assert session.close_calls == 0
+    assert (await session.execute(text("SELECT 1"))).scalar() == 1
+    assert _close_calls(session) == 0
 
-    with pytest.raises(StopIteration):
-        next(generator)
+    with pytest.raises(StopAsyncIteration):
+        await anext(generator)
 
-    assert session.close_calls == 1
+    assert _close_calls(session) == 1
 
 
-def test_get_db_closes_the_session_even_if_the_caller_raises(
-    monkeypatch, postgres_engine
+async def test_get_db_closes_the_session_even_if_the_caller_raises(
+    monkeypatch, async_engine
 ):
-    monkeypatch.setattr(
-        db_module,
-        "SessionLocal",
-        sessionmaker(bind=postgres_engine, class_=TrackedSession),
-    )
+    monkeypatch.setattr(db_module, "SessionLocal", _tracked_factory(async_engine))
 
     generator = db_module.get_db()
-    session = next(generator)
+    session = await anext(generator)
 
     with pytest.raises(ValueError):
-        generator.throw(ValueError("simulated route error"))
+        await generator.athrow(ValueError("simulated route error"))
 
-    assert session.close_calls == 1
+    assert _close_calls(session) == 1
 
 
-def test_get_db_session_raises_when_uninitialized(monkeypatch):
+async def test_get_db_session_raises_when_uninitialized(monkeypatch):
     monkeypatch.setattr(db_module, "SessionLocal", None)
 
-    with (
-        pytest.raises(RuntimeError, match="not initialized"),
-        db_module.get_db_session(),
-    ):
-        pass
+    with pytest.raises(RuntimeError, match="not initialized"):
+        async with db_module.get_db_session():
+            pass
 
 
-def test_get_db_session_yields_a_working_session_and_closes_it(
-    monkeypatch, postgres_engine
+async def test_get_db_session_yields_a_working_session_and_closes_it(
+    monkeypatch, async_engine
 ):
-    monkeypatch.setattr(
-        db_module,
-        "SessionLocal",
-        sessionmaker(bind=postgres_engine, class_=TrackedSession),
-    )
+    monkeypatch.setattr(db_module, "SessionLocal", _tracked_factory(async_engine))
 
-    with db_module.get_db_session() as session:
-        assert session.execute(text("SELECT 1")).scalar() == 1
-        assert session.close_calls == 0
+    async with db_module.get_db_session() as session:
+        assert (await session.execute(text("SELECT 1"))).scalar() == 1
+        assert _close_calls(session) == 0
 
-    assert session.close_calls == 1
+    assert _close_calls(session) == 1
 
 
-def test_get_db_session_closes_even_when_the_body_raises(monkeypatch, postgres_engine):
-    monkeypatch.setattr(
-        db_module,
-        "SessionLocal",
-        sessionmaker(bind=postgres_engine, class_=TrackedSession),
-    )
+async def test_get_db_session_closes_even_when_the_body_raises(
+    monkeypatch, async_engine
+):
+    monkeypatch.setattr(db_module, "SessionLocal", _tracked_factory(async_engine))
 
     captured = {}
 
-    with pytest.raises(ValueError), db_module.get_db_session() as session:
-        captured["session"] = session
-        raise ValueError("boom")
+    with pytest.raises(ValueError):
+        async with db_module.get_db_session() as session:
+            captured["session"] = session
+            raise ValueError("boom")
 
-    assert captured["session"].close_calls == 1
+    assert _close_calls(captured["session"]) == 1

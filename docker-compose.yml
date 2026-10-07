@@ -5,7 +5,7 @@ services:
       dockerfile: ./infra/Dockerfile.nginx
     container_name: lad-nginx
     ports:
-      - "8000:80"
+      - "127.0.0.1:8000:80"
     depends_on:
       - api
     networks:
@@ -17,6 +17,10 @@ services:
       dockerfile: Dockerfile
     env_file:
       - ./backend/.env
+    environment:
+      ALLOWED_CLIENT_HOSTS: lad-nginx
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     volumes:
       - ./chat_sandboxes:/data/chat_sandboxes
     networks:
@@ -33,10 +37,16 @@ services:
       - ./chat_sandboxes:/data/chat_sandboxes
     networks:
       - sandbox-network
-    mem_limit: 512m
-    cpus: 0.5
+    mem_limit: 1g
+    cpus: 1
+    pids_limit: 128
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
 
 networks:
   lad-network:
     external: true
-  sandbox-network: {}
+  sandbox-network:
+    internal: true

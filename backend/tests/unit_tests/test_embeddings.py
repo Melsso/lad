@@ -1,32 +1,37 @@
-from unittest.mock import MagicMock
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
 from lad.core import embeddings
 
 
-def test_embed_texts_raises_a_clear_error_when_model_not_found(monkeypatch):
+def _patch_post(monkeypatch, response):
+    mock_post = AsyncMock(return_value=response)
+    monkeypatch.setattr(embeddings.httpx.AsyncClient, "post", mock_post)
+
+    return mock_post
+
+
+async def test_embed_texts_raises_a_clear_error_when_model_not_found(monkeypatch):
     mock_response = MagicMock()
     mock_response.status_code = 404
-
-    monkeypatch.setattr(embeddings.httpx, "post", MagicMock(return_value=mock_response))
+    _patch_post(monkeypatch, mock_response)
 
     with pytest.raises(RuntimeError, match="ollama pull embeddinggemma"):
-        embeddings.embed_texts(["hello"])
+        await embeddings.embed_texts(["hello"])
 
 
-def test_embed_texts_posts_model_and_input_and_returns_embeddings(monkeypatch):
+async def test_embed_texts_posts_model_and_input_and_returns_embeddings(monkeypatch):
     mock_response = MagicMock()
+    mock_response.status_code = 200
     mock_response.raise_for_status.return_value = None
     mock_response.json.return_value = {
         "model": "embeddinggemma",
         "embeddings": [[0.1, 0.2], [0.3, 0.4]],
     }
+    mock_post = _patch_post(monkeypatch, mock_response)
 
-    mock_post = MagicMock(return_value=mock_response)
-    monkeypatch.setattr(embeddings.httpx, "post", mock_post)
-
-    result = embeddings.embed_texts(["a", "b"])
+    result = await embeddings.embed_texts(["a", "b"])
 
     assert result == [[0.1, 0.2], [0.3, 0.4]]
     _, kwargs = mock_post.call_args
@@ -34,11 +39,11 @@ def test_embed_texts_posts_model_and_input_and_returns_embeddings(monkeypatch):
     assert kwargs["json"]["model"] == "embeddinggemma"
 
 
-def test_embed_query_returns_the_first_vector(monkeypatch):
+async def test_embed_query_returns_the_first_vector(monkeypatch):
     mock_response = MagicMock()
+    mock_response.status_code = 200
     mock_response.raise_for_status.return_value = None
     mock_response.json.return_value = {"embeddings": [[0.5, 0.6]]}
+    _patch_post(monkeypatch, mock_response)
 
-    monkeypatch.setattr(embeddings.httpx, "post", MagicMock(return_value=mock_response))
-
-    assert embeddings.embed_query("hello") == [0.5, 0.6]
+    assert await embeddings.embed_query("hello") == [0.5, 0.6]

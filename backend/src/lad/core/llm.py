@@ -44,7 +44,7 @@ def _build_options(
     return options
 
 
-def generate_content(
+async def generate_content(
     *,
     contents: str,
     system_instruction: str | None = None,
@@ -53,9 +53,8 @@ def generate_content(
 ) -> str:
     resolved_model = model or conf.OLLAMA_MODEL
 
-    response = httpx.post(
-        f"{conf.OLLAMA_HOST}/api/chat",
-        json={
+    body = await _chat(
+        {
             "model": resolved_model,
             "messages": _build_messages(
                 contents=contents, system_instruction=system_instruction
@@ -65,11 +64,10 @@ def generate_content(
                 temperature=temperature, num_ctx=conf.OLLAMA_NUM_CTX
             ),
         },
-        timeout=conf.OLLAMA_TIMEOUT,
+        resolved_model,
     )
-    raise_for_ollama_status(response, resolved_model)
 
-    text = response.json().get("message", {}).get("content", "")
+    text = body.get("message", {}).get("content", "")
 
     if not text:
         raise RuntimeError("LLM returned an empty response")
@@ -124,7 +122,7 @@ def build_tool_result_message(tool_name: str, content: str) -> dict[str, Any]:
     return {"role": "tool", "tool_name": tool_name, "content": content}
 
 
-def generate_turn(
+async def generate_turn(
     *,
     messages: list[dict[str, Any]],
     tools: list[ToolDefinition] | None = None,
@@ -143,16 +141,19 @@ def generate_turn(
     if tools:
         payload["tools"] = _build_tools(tools)
 
-    response = httpx.post(
-        f"{conf.OLLAMA_HOST}/api/chat",
-        json=payload,
-        timeout=conf.OLLAMA_TIMEOUT,
-    )
-    raise_for_ollama_status(response, resolved_model)
-
-    message = response.json().get("message", {})
+    body = await _chat(payload, resolved_model)
+    message = body.get("message", {})
 
     return LLMTurn(
         content=message.get("content", "").strip(),
         tool_calls=_parse_tool_calls(message.get("tool_calls", [])),
     )
+
+
+async def _chat(payload: dict[str, Any], model: str) -> dict[str, Any]:
+    async with httpx.AsyncClient(timeout=conf.OLLAMA_TIMEOUT) as client:
+        response = await client.post(f"{conf.OLLAMA_HOST}/api/chat", json=payload)
+
+    raise_for_ollama_status(response, model)
+
+    return response.json()

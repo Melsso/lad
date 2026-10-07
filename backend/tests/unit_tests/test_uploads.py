@@ -120,3 +120,18 @@ def test_save_uploads_strips_path_components(monkeypatch, tmp_path):
     assert filenames == ["passwd"]
     assert (tmp_path / "1" / "passwd").read_bytes() == b"x"
     assert not (tmp_path.parent / "etc").exists()
+
+
+def test_delete_chat_sandbox_removes_the_directory(monkeypatch, tmp_path):
+    monkeypatch.setattr(uploads_module, "SANDBOX_ROOT", tmp_path)
+    uploads_module.save_uploads(chat_id=7, files=[FakeUploadFile("a.py", b"a")])
+
+    uploads_module.delete_chat_sandbox(7)
+
+    assert not (tmp_path / "7").exists()
+
+
+def test_delete_chat_sandbox_is_a_noop_when_missing(monkeypatch, tmp_path):
+    monkeypatch.setattr(uploads_module, "SANDBOX_ROOT", tmp_path)
+
+    uploads_module.delete_chat_sandbox(99)

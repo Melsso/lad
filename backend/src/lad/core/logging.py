@@ -36,6 +36,9 @@ class JsonFormatter(logging.Formatter):
         if hasattr(record, "error_message"):
             log_record["error_message"] = record.error_message
 
+        if record.exc_info:
+            log_record["traceback"] = self.formatException(record.exc_info)
+
         return json.dumps(log_record)
 
 

@@ -16,20 +16,20 @@ def _echo_client() -> MCPClient:
     )
 
 
-def test_list_tools_discovers_the_real_echo_server():
+async def test_list_tools_discovers_the_real_echo_server():
     client = _echo_client()
 
-    tools = client.list_tools()
+    tools = await client.list_tools()
 
     assert len(tools) == 1
     assert tools[0].name == "echo"
     assert "message" in tools[0].parameters["properties"]
 
 
-def test_call_tool_round_trips_through_a_real_subprocess():
+async def test_call_tool_round_trips_through_a_real_subprocess():
     client = _echo_client()
-    client.list_tools()
+    await client.list_tools()
 
-    result = client.call_tool("echo", {"message": "hello world"})
+    result = await client.call_tool("echo", {"message": "hello world"})
 
     assert result == "echo: hello world"

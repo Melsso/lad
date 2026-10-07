@@ -1,3 +1,5 @@
+import os
+import signal
 import subprocess
 from pathlib import Path
 
@@ -5,7 +7,7 @@ from fastapi import FastAPI
 
 from sandbox import schemas
 
-app = FastAPI()
+app = FastAPI(title="lad-sandbox", version="0.1.0")
 
 
 def _chat_workdir(chat_id: str) -> Path:
@@ -14,40 +16,41 @@ def _chat_workdir(chat_id: str) -> Path:
     return workdir
 
 
-def _to_str(value: str | bytes | None) -> str:
-    if value is None:
-        return ""
-    if isinstance(value, bytes):
-        return value.decode(errors="replace")
-    return value
-
-
 @app.post("/execute", response_model=schemas.ExecuteResponse)
 def execute(request: schemas.ExecuteRequest) -> schemas.ExecuteResponse:
     workdir = _chat_workdir(request.chat_id)
 
+    process = subprocess.Popen(
+        ["sh", "-c", request.command],
+        cwd=workdir,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+        errors="replace",
+        start_new_session=True,
+    )
+
     try:
-        result = subprocess.run(
-            ["sh", "-c", request.command],
-            cwd=workdir,
-            capture_output=True,
-            text=True,
-            timeout=request.timeout,
-            check=False,
-        )
-    except subprocess.TimeoutExpired as exc:
-        stderr = _to_str(exc.stderr)
+        stdout, stderr = process.communicate(timeout=request.timeout)
+    except subprocess.TimeoutExpired:
+        try:
+            os.killpg(process.pid, signal.SIGKILL)
+        except ProcessLookupError:
+            pass
+
+        stdout, stderr = process.communicate()
+
         return schemas.ExecuteResponse(
             exit_code=-1,
-            stdout=_to_str(exc.stdout),
+            stdout=stdout,
             stderr=stderr + f"\n[command timed out after {request.timeout}s]",
             timed_out=True,
         )
 
     return schemas.ExecuteResponse(
-        exit_code=result.returncode,
-        stdout=result.stdout,
-        stderr=result.stderr,
+        exit_code=process.returncode,
+        stdout=stdout,
+        stderr=stderr,
         timed_out=False,
     )
 

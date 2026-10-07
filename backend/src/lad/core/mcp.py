@@ -1,4 +1,3 @@
-import asyncio
 import json
 import os
 from dataclasses import dataclass
@@ -53,12 +52,14 @@ class MCPClient:
         self._servers = servers
         self._tool_owners: dict[str, MCPServerConfig] = {}
 
-    def list_tools(self, allowed_tools: set[str] | None = None) -> list[ToolDefinition]:
+    async def list_tools(
+        self, allowed_tools: set[str] | None = None
+    ) -> list[ToolDefinition]:
         if not self._servers:
             return []
 
         try:
-            definitions = asyncio.run(self._list_tools_async())
+            definitions = await self._list_tools_async()
         except BaseExceptionGroup as group:
             raise RuntimeError(_describe_exception(group)) from group
 
@@ -94,7 +95,7 @@ class MCPClient:
 
         return definitions
 
-    def call_tool(
+    async def call_tool(
         self,
         name: str,
         arguments: dict[str, Any],
@@ -106,9 +107,7 @@ class MCPClient:
             raise ValueError(f"Unknown MCP tool: {name}")
 
         try:
-            return asyncio.run(
-                self._call_tool_async(server, name, arguments, extra_env)
-            )
+            return await self._call_tool_async(server, name, arguments, extra_env)
         except BaseExceptionGroup as group:
             raise RuntimeError(_describe_exception(group)) from group
 

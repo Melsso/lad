@@ -29,7 +29,7 @@ else
     fi
 
     echo "Creating Postgres container..."
-    docker run -d --name $DB_CONTAINER --env-file infra/.db_env --network $NETWORK_NAME -p 5432:5432 $DB_IMAGE
+    docker run -d --name $DB_CONTAINER --env-file infra/.db_env --network $NETWORK_NAME -p 127.0.0.1:5432:5432 $DB_IMAGE
   fi
 fi
 

@@ -7,7 +7,7 @@ CHAT_SANDBOXES_ROOT = Path("/data/chat_sandboxes")
 
 
 class ExecuteRequest(BaseModel):
-    chat_id: str
+    chat_id: str = Field(pattern=r"^\d+$")
     command: str
     timeout: int = Field(default=60, gt=0, le=MAX_TIMEOUT_SECONDS)
 

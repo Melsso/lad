@@ -1,7 +1,7 @@
 [project]
 name = "sandbox"
 version = "0.1.0"
-description = ""
+description = "LAD sandbox: isolated command execution service"
 authors = [
     {name = "Mallem Sofiane",email = "melsopv@gmail.com"}
 ]

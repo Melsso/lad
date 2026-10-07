@@ -3,8 +3,8 @@ import json
 from lad.helpers import messages as messages_module
 
 
-def test_create_message_defaults_tool_fields_to_none(mock_session):
-    result = messages_module.create_message(
+async def test_create_message_defaults_tool_fields_to_none(mock_session):
+    result = await messages_module.create_message(
         mock_session, chat_id=1, role="user", content="hi"
     )
 
@@ -13,11 +13,11 @@ def test_create_message_defaults_tool_fields_to_none(mock_session):
     assert result.tool_arguments is None
     assert result.attached_files is None
     mock_session.add.assert_called_once()
-    mock_session.flush.assert_called_once()
+    mock_session.flush.assert_awaited_once()
 
 
-def test_create_message_json_encodes_attached_files(mock_session):
-    result = messages_module.create_message(
+async def test_create_message_json_encodes_attached_files(mock_session):
+    result = await messages_module.create_message(
         mock_session,
         chat_id=1,
         role="user",
@@ -29,45 +29,45 @@ def test_create_message_json_encodes_attached_files(mock_session):
     assert json.loads(result.attached_files) == ["main.py", "notes.txt"]
 
 
-def test_create_message_stores_none_for_empty_attached_files_list(mock_session):
-    result = messages_module.create_message(
+async def test_create_message_stores_none_for_empty_attached_files_list(mock_session):
+    result = await messages_module.create_message(
         mock_session, chat_id=1, role="user", content="hi", attached_files=[]
     )
 
     assert result.attached_files is None
 
 
-def test_create_tool_call_message_persists_call_metadata(mock_session):
-    result = messages_module.create_tool_call_message(
+async def test_create_tool_call_message_persists_call_metadata(mock_session):
+    result = await messages_module.create_tool_call_message(
         mock_session,
         chat_id=1,
         call_id="call_0",
-        tool_name="get_temperature",
-        arguments={"city": "New York"},
+        tool_name="run_command",
+        arguments={"command": "ls"},
     )
 
     assert result.role == "tool_call"
     assert result.content == ""
     assert result.tool_call_id == "call_0"
-    assert result.tool_name == "get_temperature"
+    assert result.tool_name == "run_command"
     assert result.tool_arguments is not None
-    assert json.loads(result.tool_arguments) == {"city": "New York"}
+    assert json.loads(result.tool_arguments) == {"command": "ls"}
     mock_session.add.assert_called_once()
 
 
-def test_create_tool_result_message_persists_result_content(mock_session):
-    result = messages_module.create_tool_result_message(
+async def test_create_tool_result_message_persists_result_content(mock_session):
+    result = await messages_module.create_tool_result_message(
         mock_session,
         chat_id=1,
         call_id="call_0",
-        tool_name="get_temperature",
-        content="22°C",
+        tool_name="run_command",
+        content="file.txt",
     )
 
     assert result.role == "tool_result"
-    assert result.content == "22°C"
+    assert result.content == "file.txt"
     assert result.tool_call_id == "call_0"
-    assert result.tool_name == "get_temperature"
+    assert result.tool_name == "run_command"
     assert result.tool_arguments is None
 
 

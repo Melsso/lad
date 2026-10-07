@@ -1,3 +1,5 @@
+from unittest.mock import AsyncMock
+
 from sqlalchemy.exc import SQLAlchemyError
 
 from lad.routes import app as app_routes
@@ -18,7 +20,7 @@ def test_list_chats_success(monkeypatch, client):
             "created_at": "2026-01-02T00:00:00+00:00",
         },
     ]
-    monkeypatch.setattr(app_routes, "get_chats", lambda db: fake_chats)
+    monkeypatch.setattr(app_routes, "get_chats", AsyncMock(return_value=fake_chats))
 
     response = client.get("/app/")
 
@@ -27,10 +29,11 @@ def test_list_chats_success(monkeypatch, client):
 
 
 def test_list_chats_db_error(monkeypatch, client):
-    def raise_error(db):
-        raise SQLAlchemyError("connection lost")
-
-    monkeypatch.setattr(app_routes, "get_chats", raise_error)
+    monkeypatch.setattr(
+        app_routes,
+        "get_chats",
+        AsyncMock(side_effect=SQLAlchemyError("connection lost")),
+    )
 
     response = client.get("/app/")
 

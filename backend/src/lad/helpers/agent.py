@@ -1,9 +1,9 @@
 import json
 import logging
-from collections.abc import Iterator
+from collections.abc import AsyncIterator, Iterator
 from typing import Any
 
-from sqlalchemy.orm import Session
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from lad.core.llm import (
     build_assistant_tool_call_message,
@@ -36,9 +36,9 @@ def _chunk_text(text: str) -> Iterator[str]:
         yield text[start : start + CHUNK_SIZE]
 
 
-def _call_tool(name: str, arguments: dict[str, Any], chat_id: int) -> str:
+async def _call_tool(name: str, arguments: dict[str, Any], chat_id: int) -> str:
     try:
-        return mcp_client.call_tool(
+        return await mcp_client.call_tool(
             name, arguments, extra_env={"LAD_CHAT_ID": str(chat_id)}
         )
     except Exception as exc:
@@ -84,8 +84,8 @@ def _message_to_turn(message: Messages) -> dict[str, Any]:
     return {"role": message.role, "content": content}
 
 
-def _run_tool_turn(
-    db: Session,
+async def _run_tool_turn(
+    db: AsyncSession,
     chat_id: int,
     summary: str | None,
     history: list[Messages],
@@ -94,8 +94,8 @@ def _run_tool_turn(
     model: str,
     allowed_tools: set[str],
     max_iterations: int,
-) -> Iterator[str]:
-    tools = mcp_client.list_tools(allowed_tools=allowed_tools)
+) -> AsyncIterator[str]:
+    tools = await mcp_client.list_tools(allowed_tools=allowed_tools)
 
     conversation: list[dict[str, Any]] = [{"role": "system", "content": system_prompt}]
 
@@ -112,38 +112,40 @@ def _run_tool_turn(
     for iteration in range(max_iterations):
         is_last_iteration = iteration == max_iterations - 1
 
-        turn = generate_turn(
+        turn = await generate_turn(
             messages=conversation,
             tools=None if is_last_iteration else tools,
             model=model,
         )
 
-        if not turn.tool_calls:
+        tool_calls = [] if is_last_iteration else turn.tool_calls
+
+        if not tool_calls:
             if not turn.content.strip():
                 raise RuntimeError("LLM returned an empty response")
 
             for chunk in _chunk_text(turn.content):
                 yield format_sse_event("chunk", {"text": chunk})
 
-            assistant_message = create_message(
+            assistant_message = await create_message(
                 db=db, chat_id=chat_id, role="assistant", content=turn.content
             )
-            db.commit()
+            await db.commit()
 
             yield sse_event_for_message("done", assistant_message)
             return
 
         conversation.append(build_assistant_tool_call_message(turn))
 
-        for call in turn.tool_calls:
-            tool_call_row = create_tool_call_message(
+        for call in tool_calls:
+            tool_call_row = await create_tool_call_message(
                 db=db,
                 chat_id=chat_id,
                 call_id=call.call_id,
                 tool_name=call.name,
                 arguments=call.arguments,
             )
-            db.commit()
+            await db.commit()
             yield sse_event_for_message("tool_call", tool_call_row)
 
             if call.name not in allowed_tools:
@@ -151,28 +153,28 @@ def _run_tool_turn(
                     f"Error: tool '{call.name}' is not available in this mode."
                 )
             else:
-                result_content = _call_tool(call.name, call.arguments, chat_id)
+                result_content = await _call_tool(call.name, call.arguments, chat_id)
 
-            tool_result_row = create_tool_result_message(
+            tool_result_row = await create_tool_result_message(
                 db=db,
                 chat_id=chat_id,
                 call_id=call.call_id,
                 tool_name=call.name,
                 content=result_content,
             )
-            db.commit()
+            await db.commit()
             yield sse_event_for_message("tool_result", tool_result_row)
 
             conversation.append(build_tool_result_message(call.name, result_content))
 
 
 def run_agent_turn(
-    db: Session,
+    db: AsyncSession,
     chat_id: int,
     summary: str | None,
     history: list[Messages],
-) -> Iterator[str]:
-    yield from _run_tool_turn(
+) -> AsyncIterator[str]:
+    return _run_tool_turn(
         db,
         chat_id,
         summary,
@@ -185,12 +187,12 @@ def run_agent_turn(
 
 
 def run_chat_turn(
-    db: Session,
+    db: AsyncSession,
     chat_id: int,
     summary: str | None,
     history: list[Messages],
-) -> Iterator[str]:
-    yield from _run_tool_turn(
+) -> AsyncIterator[str]:
+    return _run_tool_turn(
         db,
         chat_id,
         summary,

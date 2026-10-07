@@ -1,18 +1,26 @@
+import asyncio
 import logging
-import time
-from contextlib import contextmanager
+from collections.abc import AsyncGenerator, AsyncIterator
+from contextlib import asynccontextmanager
 
-from sqlalchemy import create_engine, text
+from sqlalchemy import text
 from sqlalchemy.exc import SQLAlchemyError
-from sqlalchemy.orm import sessionmaker
+from sqlalchemy.ext.asyncio import (
+    AsyncEngine,
+    AsyncSession,
+    async_sessionmaker,
+    create_async_engine,
+)
 
 from lad.models.db import Base
 from lad.schemas.config import conf
 
 logger = logging.getLogger("Lad")
 
-engine = None
-SessionLocal = None
+RETRY_DELAY_SECONDS = 30
+
+engine: AsyncEngine | None = None
+SessionLocal: async_sessionmaker[AsyncSession] | None = None
 
 
 def _build_database_url() -> str:
@@ -22,43 +30,44 @@ def _build_database_url() -> str:
     )
 
 
-def _ensure_pgvector_extension(engine) -> None:
-    with engine.begin() as conn:
-        conn.execute(text("CREATE EXTENSION IF NOT EXISTS vector"))
+def _build_engine() -> AsyncEngine:
+    return create_async_engine(_build_database_url(), echo=False)
 
 
-def init_db():
+def _build_session_factory(db_engine: AsyncEngine) -> async_sessionmaker[AsyncSession]:
+    return async_sessionmaker(bind=db_engine, autoflush=False, expire_on_commit=False)
+
+
+def connect_db() -> None:
+    global engine, SessionLocal
+
+    engine = _build_engine()
+    SessionLocal = _build_session_factory(engine)
+
+
+async def _prepare_schema(db_engine: AsyncEngine) -> None:
+    async with db_engine.begin() as conn:
+        await conn.execute(text("CREATE EXTENSION IF NOT EXISTS vector"))
+        await conn.run_sync(Base.metadata.create_all)
+
+
+async def init_db() -> None:
     global engine, SessionLocal
 
     while True:
+        candidate = _build_engine()
+
+        logger.info(
+            "lad_event",
+            extra={
+                "event": "db_init",
+                "status": "starting",
+                "context": {"location": "init_db"},
+            },
+        )
+
         try:
-            logger.info(
-                "lad_event",
-                extra={
-                    "event": "db_init",
-                    "status": "starting",
-                    "context": {"location": "init_db"},
-                },
-            )
-            engine = create_engine(_build_database_url(), echo=False)
-
-            with engine.connect() as conn:
-                conn.execute(text("SELECT 1"))
-
-            _ensure_pgvector_extension(engine)
-            Base.metadata.create_all(bind=engine)
-            SessionLocal = sessionmaker(bind=engine, autoflush=False, autocommit=False)
-
-            logger.info(
-                "lad_event",
-                extra={
-                    "event": "db_init",
-                    "status": "success",
-                    "context": {"location": "init_db"},
-                },
-            )
-            break
-
+            await _prepare_schema(candidate)
         except SQLAlchemyError as exc:
             logger.error(
                 "lad_event",
@@ -70,40 +79,41 @@ def init_db():
                     "context": {"location": "init_db"},
                 },
             )
-            time.sleep(30)
+            await candidate.dispose()
+            await asyncio.sleep(RETRY_DELAY_SECONDS)
+            continue
+
+        engine = candidate
+        SessionLocal = _build_session_factory(candidate)
+
+        logger.info(
+            "lad_event",
+            extra={
+                "event": "db_init",
+                "status": "success",
+                "context": {"location": "init_db"},
+            },
+        )
+        return
 
 
-def connect_db():
-    global engine, SessionLocal
-
-    engine = create_engine(_build_database_url(), echo=False)
-
-    with engine.connect() as conn:
-        conn.execute(text("SELECT 1"))
-
-    _ensure_pgvector_extension(engine)
-    Base.metadata.create_all(bind=engine)
-    SessionLocal = sessionmaker(bind=engine, autoflush=False, autocommit=False)
+async def dispose_db() -> None:
+    if engine is not None:
+        await engine.dispose()
 
 
-def get_db():
+async def get_db() -> AsyncGenerator[AsyncSession, None]:
     if SessionLocal is None:
         raise RuntimeError("DB not initialized yet")
 
-    db = SessionLocal()
-    try:
+    async with SessionLocal() as db:
         yield db
-    finally:
-        db.close()
 
 
-@contextmanager
-def get_db_session():
+@asynccontextmanager
+async def get_db_session() -> AsyncIterator[AsyncSession]:
     if SessionLocal is None:
         raise RuntimeError("DB not initialized yet")
 
-    db = SessionLocal()
-    try:
+    async with SessionLocal() as db:
         yield db
-    finally:
-        db.close()

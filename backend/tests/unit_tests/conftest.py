@@ -1,7 +1,7 @@
 import os
-from contextlib import contextmanager
+from contextlib import asynccontextmanager
 from datetime import UTC, datetime
-from unittest.mock import MagicMock
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
@@ -14,7 +14,9 @@ os.environ.setdefault("MCP_SERVERS", "[]")
 
 @pytest.fixture
 def mock_session():
-    return MagicMock()
+    session = AsyncMock()
+    session.add = MagicMock()
+    return session
 
 
 @pytest.fixture
@@ -79,50 +81,11 @@ def summary_factory():
 
 
 @pytest.fixture
-def session_builder():
-    from lad.models.db import Chat, ConversationSummary, Messages
-
-    def _build(chat=None, messages=None, summary=None):
-        session = MagicMock()
-
-        chat_query = MagicMock()
-        chat_query.filter.return_value.first.return_value = chat
-
-        messages_query = MagicMock()
-        messages_query.filter.return_value.filter.return_value = (
-            messages_query.filter.return_value
-        )
-        messages_query.filter.return_value.order_by.return_value.all.return_value = (
-            messages or []
-        )
-        messages_query.filter.return_value.order_by.return_value.first.return_value = (
-            messages[-1] if messages else None
-        )
-
-        summary_query = MagicMock()
-        summary_query.filter.return_value.first.return_value = summary
-
-        def query_side_effect(model):
-            if model is Chat:
-                return chat_query
-            if model is Messages:
-                return messages_query
-            if model is ConversationSummary:
-                return summary_query
-            return MagicMock()
-
-        session.query.side_effect = query_side_effect
-        return session
-
-    return _build
-
-
-@pytest.fixture
 def patch_db_session(monkeypatch):
     from lad.helpers import chat as chat_module
 
-    @contextmanager
-    def _fake_context(session):
+    @asynccontextmanager
+    async def _fake_context(session):
         yield session
 
     def _patch(session):
@@ -141,6 +104,6 @@ def client():
     from lad.core.db import get_db
 
     app = create_app()
-    app.dependency_overrides[get_db] = lambda: MagicMock()
+    app.dependency_overrides[get_db] = lambda: AsyncMock()
 
     return TestClient(app)

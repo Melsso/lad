@@ -72,6 +72,10 @@ def chat_sandbox_dir(chat_id: int) -> Path:
     return SANDBOX_ROOT / str(chat_id)
 
 
+def delete_chat_sandbox(chat_id: int) -> None:
+    shutil.rmtree(chat_sandbox_dir(chat_id), ignore_errors=True)
+
+
 def save_uploads(chat_id: int, files: Sequence[UploadedFile]) -> list[str]:
     target_dir = chat_sandbox_dir(chat_id)
     target_dir.mkdir(parents=True, exist_ok=True)

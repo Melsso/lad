@@ -1,5 +1,5 @@
 import json
-from unittest.mock import MagicMock
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
@@ -10,44 +10,45 @@ from lad.schemas.llm import LLMTurn, ToolCall, ToolDefinition
 
 def _mock_post_response(monkeypatch, *, json_body):
     mock_response = MagicMock()
+    mock_response.status_code = 200
     mock_response.raise_for_status.return_value = None
     mock_response.json.return_value = json_body
 
-    mock_post = MagicMock(return_value=mock_response)
-    monkeypatch.setattr(core_llm.httpx, "post", mock_post)
+    mock_post = AsyncMock(return_value=mock_response)
+    monkeypatch.setattr(core_llm.httpx.AsyncClient, "post", mock_post)
 
     return mock_post
 
 
-def test_generate_content_uses_default_model_when_not_overridden(monkeypatch):
+async def test_generate_content_uses_default_model_when_not_overridden(monkeypatch):
     mock_post = _mock_post_response(
         monkeypatch, json_body={"message": {"content": "ok"}}
     )
 
-    core_llm.generate_content(contents="hi")
+    await core_llm.generate_content(contents="hi")
 
     _, kwargs = mock_post.call_args
     assert kwargs["json"]["model"] == core_llm.conf.OLLAMA_MODEL
     assert kwargs["json"]["options"]["num_ctx"] == core_llm.conf.OLLAMA_NUM_CTX
 
 
-def test_generate_content_uses_the_provided_model_override(monkeypatch):
+async def test_generate_content_uses_the_provided_model_override(monkeypatch):
     mock_post = _mock_post_response(
         monkeypatch, json_body={"message": {"content": "ok"}}
     )
 
-    core_llm.generate_content(contents="hi", model="gemma4:12b")
+    await core_llm.generate_content(contents="hi", model="gemma4:12b")
 
     _, kwargs = mock_post.call_args
     assert kwargs["json"]["model"] == "gemma4:12b"
 
 
-def test_generate_turn_uses_the_provided_model_override(monkeypatch):
+async def test_generate_turn_uses_the_provided_model_override(monkeypatch):
     mock_post = _mock_post_response(
         monkeypatch, json_body={"message": {"content": "ok"}}
     )
 
-    core_llm.generate_turn(
+    await core_llm.generate_turn(
         messages=[{"role": "user", "content": "hi"}], model="gemma4:12b"
     )
 
@@ -56,14 +57,15 @@ def test_generate_turn_uses_the_provided_model_override(monkeypatch):
     assert kwargs["json"]["options"]["num_ctx"] == core_llm.conf.OLLAMA_NUM_CTX
 
 
-def test_generate_turn_error_message_names_the_overridden_model(monkeypatch):
+async def test_generate_turn_error_message_names_the_overridden_model(monkeypatch):
     mock_response = MagicMock()
     mock_response.status_code = 404
-
-    monkeypatch.setattr(core_llm.httpx, "post", MagicMock(return_value=mock_response))
+    monkeypatch.setattr(
+        core_llm.httpx.AsyncClient, "post", AsyncMock(return_value=mock_response)
+    )
 
     with pytest.raises(RuntimeError, match="gemma4:12b"):
-        core_llm.generate_turn(
+        await core_llm.generate_turn(
             messages=[{"role": "user", "content": "hi"}], model="gemma4:12b"
         )
 
@@ -84,10 +86,8 @@ def test_build_assistant_tool_call_message_wraps_calls_in_ollama_shape():
     turn = LLMTurn(
         content="",
         tool_calls=[
-            ToolCall(
-                call_id="call_0", name="get_temperature", arguments={"city": "NY"}
-            ),
-            ToolCall(call_id="call_1", name="get_time", arguments={}),
+            ToolCall(call_id="call_0", name="run_command", arguments={"command": "ls"}),
+            ToolCall(call_id="call_1", name="web_search", arguments={}),
         ],
     )
 
@@ -97,19 +97,19 @@ def test_build_assistant_tool_call_message_wraps_calls_in_ollama_shape():
         "role": "assistant",
         "content": "",
         "tool_calls": [
-            {"function": {"name": "get_temperature", "arguments": {"city": "NY"}}},
-            {"function": {"name": "get_time", "arguments": {}}},
+            {"function": {"name": "run_command", "arguments": {"command": "ls"}}},
+            {"function": {"name": "web_search", "arguments": {}}},
         ],
     }
 
 
 def test_build_tool_result_message_matches_ollama_tool_role_shape():
-    result = core_llm.build_tool_result_message("get_temperature", "22°C")
+    result = core_llm.build_tool_result_message("run_command", "file.txt")
 
     assert result == {
         "role": "tool",
-        "tool_name": "get_temperature",
-        "content": "22°C",
+        "tool_name": "run_command",
+        "content": "file.txt",
     }
 
 
@@ -132,7 +132,7 @@ def test_raise_for_ollama_status_delegates_other_errors_to_raise_for_status():
     mock_response.raise_for_status.assert_called_once()
 
 
-def test_raise_for_ollama_status_does_nothing_on_success():
+def test_raise_for_ollama_status_calls_raise_for_status_on_success():
     mock_response = MagicMock()
     mock_response.status_code = 200
 
@@ -141,29 +141,29 @@ def test_raise_for_ollama_status_does_nothing_on_success():
     mock_response.raise_for_status.assert_called_once()
 
 
-def test_generate_content_returns_stripped_text(monkeypatch):
+async def test_generate_content_returns_stripped_text(monkeypatch):
     _mock_post_response(
         monkeypatch, json_body={"message": {"content": "  hello world  "}}
     )
 
-    result = core_llm.generate_content(contents="hi")
-
-    assert result == "hello world"
+    assert await core_llm.generate_content(contents="hi") == "hello world"
 
 
-def test_generate_content_raises_on_empty_response(monkeypatch):
+async def test_generate_content_raises_on_empty_response(monkeypatch):
     _mock_post_response(monkeypatch, json_body={"message": {"content": ""}})
 
     with pytest.raises(RuntimeError):
-        core_llm.generate_content(contents="hi")
+        await core_llm.generate_content(contents="hi")
 
 
-def test_generate_content_passes_system_instruction_and_temperature(monkeypatch):
+async def test_generate_content_passes_system_instruction_and_temperature(
+    monkeypatch,
+):
     mock_post = _mock_post_response(
         monkeypatch, json_body={"message": {"content": "ok"}}
     )
 
-    core_llm.generate_content(
+    await core_llm.generate_content(
         contents="hi", system_instruction="be nice", temperature=0.5
     )
 
@@ -175,43 +175,43 @@ def test_generate_content_passes_system_instruction_and_temperature(monkeypatch)
     assert kwargs["json"]["options"]["temperature"] == 0.5
 
 
-def test_generate_turn_returns_plain_text_with_no_tool_calls(monkeypatch):
+async def test_generate_turn_returns_plain_text_with_no_tool_calls(monkeypatch):
     _mock_post_response(monkeypatch, json_body={"message": {"content": "  hi there  "}})
 
-    turn = core_llm.generate_turn(messages=[{"role": "user", "content": "hi"}])
+    turn = await core_llm.generate_turn(messages=[{"role": "user", "content": "hi"}])
 
     assert turn.content == "hi there"
     assert turn.tool_calls == []
 
 
-def test_generate_turn_does_not_send_tools_key_when_no_tools_given(monkeypatch):
+async def test_generate_turn_does_not_send_tools_key_when_no_tools_given(monkeypatch):
     mock_post = _mock_post_response(
         monkeypatch, json_body={"message": {"content": "ok"}}
     )
 
-    core_llm.generate_turn(messages=[{"role": "user", "content": "hi"}])
+    await core_llm.generate_turn(messages=[{"role": "user", "content": "hi"}])
 
     _, kwargs = mock_post.call_args
     assert "tools" not in kwargs["json"]
 
 
-def test_generate_turn_sends_tools_in_openai_function_shape(monkeypatch):
+async def test_generate_turn_sends_tools_in_openai_function_shape(monkeypatch):
     mock_post = _mock_post_response(
         monkeypatch, json_body={"message": {"content": "ok"}}
     )
 
     tool = ToolDefinition(
-        name="get_temperature",
-        description="Get the current temperature for a city",
+        name="web_search",
+        description="Search the web",
         parameters={
             "type": "object",
-            "required": ["city"],
-            "properties": {"city": {"type": "string"}},
+            "required": ["query"],
+            "properties": {"query": {"type": "string"}},
         },
     )
 
-    core_llm.generate_turn(
-        messages=[{"role": "user", "content": "weather in NY?"}], tools=[tool]
+    await core_llm.generate_turn(
+        messages=[{"role": "user", "content": "news?"}], tools=[tool]
     )
 
     _, kwargs = mock_post.call_args
@@ -219,19 +219,19 @@ def test_generate_turn_sends_tools_in_openai_function_shape(monkeypatch):
         {
             "type": "function",
             "function": {
-                "name": "get_temperature",
-                "description": "Get the current temperature for a city",
+                "name": "web_search",
+                "description": "Search the web",
                 "parameters": {
                     "type": "object",
-                    "required": ["city"],
-                    "properties": {"city": {"type": "string"}},
+                    "required": ["query"],
+                    "properties": {"query": {"type": "string"}},
                 },
             },
         }
     ]
 
 
-def test_generate_turn_parses_tool_calls_with_dict_arguments(monkeypatch):
+async def test_generate_turn_parses_tool_calls_with_dict_arguments(monkeypatch):
     _mock_post_response(
         monkeypatch,
         json_body={
@@ -240,8 +240,8 @@ def test_generate_turn_parses_tool_calls_with_dict_arguments(monkeypatch):
                 "tool_calls": [
                     {
                         "function": {
-                            "name": "get_temperature",
-                            "arguments": {"city": "New York"},
+                            "name": "web_search",
+                            "arguments": {"query": "ollama"},
                         }
                     }
                 ],
@@ -249,19 +249,21 @@ def test_generate_turn_parses_tool_calls_with_dict_arguments(monkeypatch):
         },
     )
 
-    turn = core_llm.generate_turn(
-        messages=[{"role": "user", "content": "weather in NY?"}],
-        tools=[ToolDefinition(name="get_temperature", description="", parameters={})],
+    turn = await core_llm.generate_turn(
+        messages=[{"role": "user", "content": "news?"}],
+        tools=[ToolDefinition(name="web_search", description="", parameters={})],
     )
 
     assert turn.content == ""
     assert len(turn.tool_calls) == 1
     assert turn.tool_calls[0].call_id == "call_0"
-    assert turn.tool_calls[0].name == "get_temperature"
-    assert turn.tool_calls[0].arguments == {"city": "New York"}
+    assert turn.tool_calls[0].name == "web_search"
+    assert turn.tool_calls[0].arguments == {"query": "ollama"}
 
 
-def test_generate_turn_parses_tool_calls_with_stringified_arguments(monkeypatch):
+async def test_generate_turn_parses_tool_calls_with_stringified_arguments(
+    monkeypatch,
+):
     _mock_post_response(
         monkeypatch,
         json_body={
@@ -270,8 +272,8 @@ def test_generate_turn_parses_tool_calls_with_stringified_arguments(monkeypatch)
                 "tool_calls": [
                     {
                         "function": {
-                            "name": "get_temperature",
-                            "arguments": json.dumps({"city": "New York"}),
+                            "name": "web_search",
+                            "arguments": json.dumps({"query": "ollama"}),
                         }
                     }
                 ],
@@ -279,31 +281,33 @@ def test_generate_turn_parses_tool_calls_with_stringified_arguments(monkeypatch)
         },
     )
 
-    turn = core_llm.generate_turn(
-        messages=[{"role": "user", "content": "weather in NY?"}],
-        tools=[ToolDefinition(name="get_temperature", description="", parameters={})],
+    turn = await core_llm.generate_turn(
+        messages=[{"role": "user", "content": "news?"}],
+        tools=[ToolDefinition(name="web_search", description="", parameters={})],
     )
 
-    assert turn.tool_calls[0].arguments == {"city": "New York"}
+    assert turn.tool_calls[0].arguments == {"query": "ollama"}
 
 
-def test_generate_turn_assigns_unique_call_ids_for_parallel_tool_calls(monkeypatch):
+async def test_generate_turn_assigns_unique_call_ids_for_parallel_tool_calls(
+    monkeypatch,
+):
     _mock_post_response(
         monkeypatch,
         json_body={
             "message": {
                 "content": "",
                 "tool_calls": [
-                    {"function": {"name": "get_temperature", "arguments": {}}},
-                    {"function": {"name": "get_temperature", "arguments": {}}},
+                    {"function": {"name": "web_search", "arguments": {}}},
+                    {"function": {"name": "web_search", "arguments": {}}},
                 ],
             }
         },
     )
 
-    turn = core_llm.generate_turn(
-        messages=[{"role": "user", "content": "weather?"}],
-        tools=[ToolDefinition(name="get_temperature", description="", parameters={})],
+    turn = await core_llm.generate_turn(
+        messages=[{"role": "user", "content": "news?"}],
+        tools=[ToolDefinition(name="web_search", description="", parameters={})],
     )
 
     assert [call.call_id for call in turn.tool_calls] == ["call_0", "call_1"]
@@ -314,38 +318,38 @@ def test_format_message_renders_tool_call_and_tool_result_rows(message_factory):
         1,
         role="tool_call",
         content="",
-        tool_name="get_temperature",
-        tool_arguments='{"city": "New York"}',
+        tool_name="web_search",
+        tool_arguments='{"query": "ollama"}',
     )
     tool_result = message_factory(
-        2, role="tool_result", content="22°C", tool_name="get_temperature"
+        2, role="tool_result", content="results", tool_name="web_search"
     )
 
     assert (
         helpers_llm._format_message(tool_call)
-        == 'TOOL_CALL get_temperature({"city": "New York"})'
+        == 'TOOL_CALL web_search({"query": "ollama"})'
     )
-    assert (
-        helpers_llm._format_message(tool_result) == "TOOL_RESULT get_temperature: 22°C"
-    )
+    assert helpers_llm._format_message(tool_result) == "TOOL_RESULT web_search: results"
 
 
-def test_generate_summary_returns_existing_when_no_messages():
-    result = helpers_llm.generate_summary(existing_summary="unchanged", messages=[])
+async def test_generate_summary_returns_existing_when_no_messages():
+    result = await helpers_llm.generate_summary(
+        existing_summary="unchanged", messages=[]
+    )
 
     assert result == "unchanged"
 
 
-def test_generate_summary_returns_empty_string_when_nothing_exists():
-    result = helpers_llm.generate_summary(existing_summary=None, messages=[])
+async def test_generate_summary_returns_empty_string_when_nothing_exists():
+    result = await helpers_llm.generate_summary(existing_summary=None, messages=[])
 
     assert result == ""
 
 
-def test_generate_summary_calls_generate_content(monkeypatch, message_factory):
+async def test_generate_summary_calls_generate_content(monkeypatch, message_factory):
     captured = {}
 
-    def fake_generate_content(
+    async def fake_generate_content(
         *, contents, system_instruction=None, temperature=None, model=None
     ):
         captured["contents"] = contents
@@ -356,7 +360,7 @@ def test_generate_summary_calls_generate_content(monkeypatch, message_factory):
     monkeypatch.setattr(helpers_llm, "generate_content", fake_generate_content)
 
     messages = [message_factory(1, role="user", content="remember this")]
-    result = helpers_llm.generate_summary(
+    result = await helpers_llm.generate_summary(
         existing_summary="old summary", messages=messages
     )
 

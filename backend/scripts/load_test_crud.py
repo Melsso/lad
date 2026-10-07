@@ -5,6 +5,7 @@ fair test here: it exercises FastAPI + SQLAlchemy + Postgres connection
 pooling. This is deliberately kept separate from anything that streams a
 model reply -- see profile_llm.py for that, which is profiling, not load
 testing, since local LLM inference is the bottleneck there, not LAD's code.
+/chat/messages is measured against empty chats, since creating messages requires the LLM.
 
 Usage:
     poetry run python scripts/load_test_crud.py
@@ -35,8 +36,8 @@ class EndpointResult:
         return len(self.latencies_ms) + len(self.errors)
 
     def percentile(self, p: float) -> float:
-        if not self.latencies_ms:
-            return 0.0
+        if len(self.latencies_ms) < 2:
+            return self.latencies_ms[0] if self.latencies_ms else 0.0
         return statistics.quantiles(self.latencies_ms, n=100)[int(p) - 1]
 
     def summary_line(self) -> str:
