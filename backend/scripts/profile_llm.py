@@ -199,7 +199,6 @@ async def run_part_2(client: httpx.AsyncClient) -> None:
         )
 
     chat_a = await create_chat(client, "agent", "profile-contention-a")
-    chat_b = await create_chat(client, "agent", "profile-contention-b")
 
     print("\nRunning solo (A then B, one at a time)...")
     solo_a = await stream_message(client, chat_a, task_for(token_a))
@@ -237,7 +236,7 @@ async def run_part_2(client: httpx.AsyncClient) -> None:
         f"{'PASS' if a_clean and b_clean else 'FAIL - cross-chat contamination detected'}"
     )
 
-    for chat_id in (chat_a, chat_b, concurrent_chat_a, concurrent_chat_b):
+    for chat_id in (chat_a, concurrent_chat_a, concurrent_chat_b):
         await delete_chat(client, chat_id)
 
 

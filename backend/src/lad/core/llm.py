@@ -1,5 +1,4 @@
 import json
-from collections.abc import Iterator
 from typing import Any
 
 import httpx
@@ -76,46 +75,6 @@ def generate_content(
         raise RuntimeError("LLM returned an empty response")
 
     return text.strip()
-
-
-def stream_content(
-    *,
-    contents: str,
-    system_instruction: str | None = None,
-    temperature: float | None = None,
-    model: str | None = None,
-) -> Iterator[str]:
-    resolved_model = model or conf.OLLAMA_MODEL
-
-    with httpx.stream(
-        "POST",
-        f"{conf.OLLAMA_HOST}/api/chat",
-        json={
-            "model": resolved_model,
-            "messages": _build_messages(
-                contents=contents, system_instruction=system_instruction
-            ),
-            "stream": True,
-            "options": _build_options(
-                temperature=temperature, num_ctx=conf.OLLAMA_NUM_CTX
-            ),
-        },
-        timeout=conf.OLLAMA_TIMEOUT,
-    ) as response:
-        raise_for_ollama_status(response, resolved_model)
-
-        for line in response.iter_lines():
-            if not line:
-                continue
-
-            chunk = json.loads(line)
-
-            text = chunk.get("message", {}).get("content")
-            if text:
-                yield text
-
-            if chunk.get("done"):
-                break
 
 
 def _build_tools(tools: list[ToolDefinition]) -> list[dict[str, Any]]:

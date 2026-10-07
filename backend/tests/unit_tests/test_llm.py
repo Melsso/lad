@@ -19,21 +19,6 @@ def _mock_post_response(monkeypatch, *, json_body):
     return mock_post
 
 
-def _mock_stream_response(monkeypatch, *, lines):
-    mock_response = MagicMock()
-    mock_response.raise_for_status.return_value = None
-    mock_response.iter_lines.return_value = iter(lines)
-
-    mock_context = MagicMock()
-    mock_context.__enter__.return_value = mock_response
-    mock_context.__exit__.return_value = False
-
-    mock_stream = MagicMock(return_value=mock_context)
-    monkeypatch.setattr(core_llm.httpx, "stream", mock_stream)
-
-    return mock_stream
-
-
 def test_generate_content_uses_default_model_when_not_overridden(monkeypatch):
     mock_post = _mock_post_response(
         monkeypatch, json_body={"message": {"content": "ok"}}
@@ -74,24 +59,13 @@ def test_generate_turn_uses_the_provided_model_override(monkeypatch):
 def test_generate_turn_error_message_names_the_overridden_model(monkeypatch):
     mock_response = MagicMock()
     mock_response.status_code = 404
-    _mock_post_response(monkeypatch, json_body={})
+
     monkeypatch.setattr(core_llm.httpx, "post", MagicMock(return_value=mock_response))
 
     with pytest.raises(RuntimeError, match="gemma4:12b"):
         core_llm.generate_turn(
             messages=[{"role": "user", "content": "hi"}], model="gemma4:12b"
         )
-
-
-def test_stream_content_uses_the_provided_model_override(monkeypatch):
-    mock_stream = _mock_stream_response(
-        monkeypatch, lines=[json.dumps({"message": {"content": "ok"}, "done": True})]
-    )
-
-    list(core_llm.stream_content(contents="hi", model="gemma4:12b"))
-
-    _, kwargs = mock_stream.call_args
-    assert kwargs["json"]["model"] == "gemma4:12b"
 
 
 def test_build_options_includes_num_ctx_when_given():
@@ -139,7 +113,7 @@ def test_build_tool_result_message_matches_ollama_tool_role_shape():
     }
 
 
-def test_raise_for_ollama_status_gives_a_clear_message_on_404(monkeypatch):
+def test_raise_for_ollama_status_gives_a_clear_message_on_404():
     mock_response = MagicMock()
     mock_response.status_code = 404
 
@@ -199,31 +173,6 @@ def test_generate_content_passes_system_instruction_and_temperature(monkeypatch)
         {"role": "user", "content": "hi"},
     ]
     assert kwargs["json"]["options"]["temperature"] == 0.5
-
-
-def test_stream_content_yields_chunk_text(monkeypatch):
-    lines = [
-        json.dumps({"message": {"content": "Hel"}, "done": False}),
-        json.dumps({"message": {"content": "lo"}, "done": True}),
-    ]
-    _mock_stream_response(monkeypatch, lines=lines)
-
-    result = list(core_llm.stream_content(contents="hi"))
-
-    assert result == ["Hel", "lo"]
-
-
-def test_stream_content_skips_empty_chunks(monkeypatch):
-    lines = [
-        json.dumps({"message": {"content": ""}, "done": False}),
-        json.dumps({"message": {}, "done": False}),
-        json.dumps({"message": {"content": "ok"}, "done": True}),
-    ]
-    _mock_stream_response(monkeypatch, lines=lines)
-
-    result = list(core_llm.stream_content(contents="hi"))
-
-    assert result == ["ok"]
 
 
 def test_generate_turn_returns_plain_text_with_no_tool_calls(monkeypatch):
@@ -358,26 +307,6 @@ def test_generate_turn_assigns_unique_call_ids_for_parallel_tool_calls(monkeypat
     )
 
     assert [call.call_id for call in turn.tool_calls] == ["call_0", "call_1"]
-
-    def broken_lines():
-        yield json.dumps({"message": {"content": "partial"}, "done": False})
-        raise RuntimeError("503 UNAVAILABLE")
-
-    mock_response = MagicMock()
-    mock_response.raise_for_status.return_value = None
-    mock_response.iter_lines.return_value = broken_lines()
-
-    mock_context = MagicMock()
-    mock_context.__enter__.return_value = mock_response
-    mock_context.__exit__.return_value = False
-
-    monkeypatch.setattr(core_llm.httpx, "stream", MagicMock(return_value=mock_context))
-
-    generator = core_llm.stream_content(contents="hi")
-
-    assert next(generator) == "partial"
-    with pytest.raises(RuntimeError, match="503 UNAVAILABLE"):
-        next(generator)
 
 
 def test_format_message_renders_tool_call_and_tool_result_rows(message_factory):

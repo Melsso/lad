@@ -8,7 +8,6 @@ interface UseChatsResult {
   chats: Chat[];
   loading: boolean;
   error: Error | null;
-  refetch: () => Promise<void>;
   updateLocalChat: (chatId: number, patch: Partial<Chat>) => void;
   removeLocalChat: (chatId: number) => void;
 }
@@ -17,18 +16,6 @@ export function useChats(): UseChatsResult {
   const [chats, setChats] = useState<Chat[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<Error | null>(null);
-
-  const loadChats = useCallback(async () => {
-    try {
-      const result = await getChats();
-      setChats(result);
-      setError(null);
-    } catch (err) {
-      setError(err instanceof Error ? err : new Error("Failed to load chats"));
-    } finally {
-      setLoading(false);
-    }
-  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -91,7 +78,6 @@ export function useChats(): UseChatsResult {
     chats,
     loading,
     error,
-    refetch: loadChats,
     updateLocalChat,
     removeLocalChat,
   };

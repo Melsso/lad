@@ -47,7 +47,6 @@ function mockChats(overrides: Partial<ReturnType<typeof useChats>> = {}) {
     ],
     loading: false,
     error: null,
-    refetch: vi.fn(),
     updateLocalChat: vi.fn(),
     removeLocalChat: vi.fn(),
     ...overrides,

@@ -8,13 +8,8 @@ class Settings(BaseSettings):
     DB_HOST: str
     DB_PORT: int = 5432
 
-    DEBUG: bool = False
-
     SUMMARY_THRESHOLD: int = 20
     RECENT_MESSAGES_TO_KEEP: int = 8
-
-    AGENT_SUMMARY_THRESHOLD: int = 8
-    AGENT_RECENT_MESSAGES_TO_KEEP: int = 4
 
     OLLAMA_HOST: str = "http://host.docker.internal:11434"
     OLLAMA_MODEL: str = "qwen3:8b"

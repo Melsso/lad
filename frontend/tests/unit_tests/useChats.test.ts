@@ -40,25 +40,6 @@ describe("useChats", () => {
     expect(result.current.chats).toEqual([]);
   });
 
-  it("refetch reloads the chat list", async () => {
-    mockedGetChats.mockResolvedValueOnce([makeChat({ id: 1, title: "First" })]);
-
-    const { result } = renderHook(() => useChats());
-
-    await waitFor(() => expect(result.current.loading).toBe(false));
-
-    mockedGetChats.mockResolvedValueOnce([
-      makeChat({ id: 1, title: "First" }),
-      makeChat({ id: 2, title: "Second" }),
-    ]);
-
-    await act(async () => {
-      await result.current.refetch();
-    });
-
-    expect(result.current.chats).toHaveLength(2);
-  });
-
   it("updateLocalChat patches a chat without a network call", async () => {
     mockedGetChats.mockResolvedValue([makeChat({ id: 1, title: "Old" })]);
 

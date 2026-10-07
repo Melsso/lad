@@ -28,11 +28,4 @@ describe("ChatModeSelector", () => {
 
     expect(onChange).toHaveBeenCalledWith("agent");
   });
-
-  it("disables both buttons when disabled is true", () => {
-    render(<ChatModeSelector mode="chat" onChange={vi.fn()} disabled />);
-
-    expect(screen.getByRole("button", { name: "Chat" })).toBeDisabled();
-    expect(screen.getByRole("button", { name: "Agent" })).toBeDisabled();
-  });
 });

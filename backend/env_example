@@ -15,8 +15,6 @@ EMBEDDING_DIM=768
 
 SUMMARY_THRESHOLD=20
 RECENT_MESSAGES_TO_KEEP=8
-AGENT_SUMMARY_THRESHOLD=8
-AGENT_RECENT_MESSAGES_TO_KEEP=4
 
 # JSON list of MCP servers to connect to, e.g.
 # MCP_SERVERS=[{"name": "memory", "command": "python", "args": ["-m", "lad.tools.memory_server"]}]

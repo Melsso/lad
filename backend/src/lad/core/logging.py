@@ -13,12 +13,9 @@ class JsonFormatter(logging.Formatter):
         }
 
         for field in (
-            "request_id",
-            "user_id",
             "path",
             "method",
             "status_code",
-            "duration_ms",
         ):
             value = getattr(record, field, None)
             if value is not None:

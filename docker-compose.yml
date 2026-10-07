@@ -24,8 +24,6 @@ services:
       - sandbox-network
     expose:
       - "8000"
-    labels:
-      service: "api"
 
   sandbox:
     build:
@@ -37,11 +35,6 @@ services:
       - sandbox-network
     mem_limit: 512m
     cpus: 0.5
-    labels:
-      service: "sandbox"
-
-volumes:
-  postgres_data:
 
 networks:
   lad-network:
