@@ -1,14 +1,15 @@
 # LAD (Local AI Daemon)
 
-A personal, locally-hosted ChatGPT/Claude-style chat app: FastAPI backend,
-React frontend, Postgres, and Ollama for local LLM inference — no external
-model API, everything runs on your own machine.
+A personal, locally hosted ChatGPT/Claude-style chat app: FastAPI backend,
+React frontend, Postgres with pgvector, and Ollama for local LLM inference.
+There is no external LLM API: inference runs on your machine, and the only
+outbound request is the optional Tavily web search.
 
 ## Architecture
 
 ```
                       ┌─────────────┐
-   browser  ───────▶  │    nginx    │  :8000
+   browser  ───────▶  │    nginx    │  127.0.0.1:8000
                       │  (static +  │
                       │  /api proxy)│
                       └──────┬──────┘
@@ -22,92 +23,105 @@ model API, everything runs on your own machine.
                  ▼           ▼           ▼
           run_command   web_search  recall_memory
           (sandbox svc)  (Tavily)   (pgvector search
-                                     over chat summaries)
-                             │
-                      ┌──────▼──────┐
-                      │   sandbox   │  isolated network,
-                      │  container  │  no credentials,
-                      └─────────────┘  capped resources
+                 │                   over chat summaries)
+          ┌──────▼──────┐
+          │   sandbox   │  internal network, offline,
+          │  container  │  no credentials, capped
+          └─────────────┘  resources
 
-          api + sandbox both talk to a local Ollama
-          instance on the host (not containerized)
+      the API talks to a local Ollama instance on the host
+      (not containerized)
 ```
 
-- **frontend/** — React + TypeScript + Vite + Tailwind chat UI
-- **backend/** — FastAPI + SQLAlchemy + Postgres, chat persistence,
-  streaming replies, the MCP-based tool-calling agent layer
-- **sandbox/** — isolated command-execution service backing the agent's
-  `run_command` tool
-- **infra/** — nginx config/Dockerfile, Postgres (pgvector) Dockerfile
+- **frontend/**: React + TypeScript + Vite + Tailwind chat UI
+- **backend/**: async FastAPI + SQLAlchemy + Postgres; chat persistence, SSE
+  replies, and the MCP-based tool-calling agent layer
+- **sandbox/**: isolated, offline command-execution service behind the
+  agent's `run_command` tool
+- **infra/**: nginx config and Dockerfile, Postgres (pgvector) Dockerfile and
+  env example
 
-Each has its own README with real detail:
-[backend](backend/README.md) · [frontend](frontend/README.md) ·
-[sandbox](sandbox/README.md)
+Each has its own README: [backend](backend/README.md) ·
+[frontend](frontend/README.md) · [sandbox](sandbox/README.md)
 
 ## Chat modes
 
 Every chat is either:
 
-- **chat mode** — a lighter model, for ordinary conversation. Has two
-  tools available: `web_search` and `recall_memory` (semantic search over
-  your *other* chats' summaries — lets it recall things you discussed
-  elsewhere without you restating them).
-- **agent mode** — a larger model, framed as a general-purpose coding
-  agent (not specific to this project). Has those same two tools plus
-  `run_command` — a real sandboxed shell, so it can read/write files, run
-  code, and explore anything you hand it, including an uploaded zip you
-  tell it is a codebase.
+- **chat mode**: a lighter model for ordinary conversation. Tools:
+  `web_search` and `recall_memory` (semantic search over your *other* chats'
+  summaries).
+- **agent mode**: a larger model, framed as a general-purpose coding agent.
+  Adds `run_command`, a sandboxed shell for reading and writing files and
+  running code, including an uploaded zip you tell it is a codebase. File
+  uploads are only available in this mode.
 
-Mode is fixed per chat, chosen when you create it.
+The mode is fixed per chat and chosen when you create it.
 
 ## Prerequisites
 
-- **Docker** + **Docker Compose**
-- **[Ollama](https://ollama.com)** installed on the host (not
-  containerized — `start.sh` runs `ollama serve`/`ollama pull` directly).
-  Needs enough RAM for whichever chat/agent/embedding models you configure
-  (defaults: `qwen3:8b`, `gemma4:12b`, `embeddinggemma`).
+- **Docker** and **Docker Compose**
+- **[Ollama](https://ollama.com)** installed on the host (not containerized).
+  You need enough RAM for the models you configure (defaults: `qwen3:8b`,
+  `gemma4:12b`, `embeddinggemma`).
+
+Developed on macOS with Docker Desktop. On Linux, containers reach the host's
+Ollama through `host.docker.internal` (mapped via `host-gateway` in the compose
+file), so Ollama must listen on an address the Docker bridge can reach, for
+example `OLLAMA_HOST=0.0.0.0` for the Ollama process.
 
 ## Quickstart
 
 ```bash
-cp backend/.env.example backend/.env   # fill in TAVILY_API_KEY at minimum
+cp backend/env_example backend/.env      # set TAVILY_API_KEY at minimum
+cp infra/.db_env.example infra/.db_env   # credentials must match backend/.env
 ./start.sh
 ```
 
-`start.sh` will, in order: create the Docker network if missing, start (or
-create) the Postgres container, start Ollama if it isn't already running
-and pull whichever models your `.env` names, then build and bring up the
-rest of the stack (nginx, api, sandbox) via `docker compose up --build`.
+`start.sh` creates the Docker network if missing, starts (or creates) the
+Postgres container, starts Ollama if it isn't running and pulls the models
+named in your `.env`, then builds and starts nginx, the API and the sandbox with
+`docker compose up --build -d`. The first start downloads the models.
 
-Once it's up, the app is at **http://localhost:8000**.
+Open **http://localhost:8000**. Stop everything with `./stop.sh`.
 
-## A note on running everything on one local machine
+## Security model
 
-This is built to run entirely on a single personal machine, which shapes
-a few things worth knowing going in:
+LAD has no authentication and is meant for a single local user.
+
+- nginx and Postgres are published on `127.0.0.1` only. Don't expose them.
+- The API only accepts requests that come from nginx (`ALLOWED_CLIENT_HOSTS`),
+  so the sandbox can't call back into it.
+- The sandbox is on an internal Docker network with no internet and no route to
+  the host, holds no credentials, runs as a non-root user with all
+  capabilities dropped, and has CPU, memory and process limits.
+- Chats are separated inside the sandbox by working directory only: a command
+  in one chat can read another chat's directory. This prevents accidental
+  overlap, not a deliberate command.
+- The agent runs model-written commands, and what it reads (web search results,
+  uploaded files) can influence it. The offline, credential-free sandbox limits
+  the damage but doesn't remove the risk.
+- The default Postgres credentials are for local development. Change them in
+  both env files if the machine is shared.
+
+## Running everything on one machine
 
 - **Only one Ollama model is kept loaded at a time**
-  (`OLLAMA_MAX_LOADED_MODELS=1`, set by `start.sh`). Switching between a
-  chat-mode chat and an agent-mode chat forces a model reload, which shows
-  up as extra latency on the first message after the switch.
-- **The sandbox is one shared container, not one per chat** — a fixed
-  `0.5 cpu` / `512m` budget split across every agent-mode chat currently
-  running a command. Isolation between chats is directory-based and holds
-  up under concurrency (each `run_command` call is its own OS subprocess
-  with a chat-scoped working directory), but performance isn't isolated —
-  two agent-mode chats running commands at the same time will both slow
-  down.
-- **Load-testing this app doesn't look like load-testing a normal web
-  service.** The CRUD endpoints (create/list/delete a chat, fetch
-  history) are ordinary DB operations and take concurrency fine. Anything
-  that generates a reply is bottlenecked by local model inference, not by
-  this codebase — see `backend/scripts/profile_llm.py`'s docstring for
-  why that script profiles rather than load-tests.
+  (`OLLAMA_MAX_LOADED_MODELS=1`, set by `start.sh` only when it starts Ollama
+  itself). Switching between a chat-mode and an agent-mode chat, or a summary
+  being embedded, reloads a model, which shows up as extra latency on the next
+  reply.
+- **The sandbox is one shared container**, not one per chat, with a fixed
+  `0.5 cpu` / `1g` / 128-process budget split across every agent chat running a
+  command. Two agent chats running commands at once slow each other down.
+- **Replies are bound by local inference.** The CRUD endpoints are plain
+  database operations; anything that generates a reply is bottlenecked by
+  Ollama, not by this codebase. `backend/scripts/load_test_crud.py` exercises
+  the CRUD endpoints, and `backend/scripts/profile_llm.py` profiles replies
+  instead of load testing them.
 
 ## Development
 
-No migration tooling — schema changes require a DB reset. Each
-sub-project has its own test suite and CI workflow
-(`.github/workflows/*.yml`); see the sub-project READMEs for exact
-commands.
+There is no migration tooling: schema changes require a database reset. Each
+sub-project has its own test suite and CI workflow (`.github/workflows/`); see
+the sub-project READMEs for the exact commands.

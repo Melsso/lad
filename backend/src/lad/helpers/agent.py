@@ -36,9 +36,20 @@ def _chunk_text(text: str) -> Iterator[str]:
         yield text[start : start + CHUNK_SIZE]
 
 
+def _truncate(text: str, limit: int) -> str:
+    if len(text) <= limit:
+        return text
+
+    head = limit // 2
+    tail = limit - head
+    omitted = len(text) - limit
+
+    return f"{text[:head]}\n...[{omitted} characters truncated]...\n{text[-tail:]}"
+
+
 async def _call_tool(name: str, arguments: dict[str, Any], chat_id: int) -> str:
     try:
-        return await mcp_client.call_tool(
+        result = await mcp_client.call_tool(
             name, arguments, extra_env={"LAD_CHAT_ID": str(chat_id)}
         )
     except Exception as exc:
@@ -50,7 +61,9 @@ async def _call_tool(name: str, arguments: dict[str, Any], chat_id: int) -> str:
                 "context": {"tool_name": name},
             },
         )
-        return f"Error calling {name}: {exc}"
+        result = f"Error calling {name}: {exc}"
+
+    return _truncate(result, conf.MAX_TOOL_OUTPUT_CHARS)
 
 
 def _message_to_turn(message: Messages) -> dict[str, Any]:

@@ -1,7 +1,7 @@
 import { useEffect, useRef } from "react";
 
 import type { ChatMessage as ChatMessageType } from "../../types/chat";
-import { groupMessagesForDisplay } from "../../context/toolActivity";
+import { groupMessagesForDisplay } from "../../lib/toolActivity";
 import { ChatMessage } from "./ChatMessage";
 import { ToolActivity } from "./ToolActivity";
 

@@ -3,6 +3,7 @@ import logging
 from collections.abc import AsyncGenerator, AsyncIterator
 from contextlib import asynccontextmanager
 
+from fastapi import HTTPException
 from sqlalchemy import text
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import (
@@ -104,7 +105,7 @@ async def dispose_db() -> None:
 
 async def get_db() -> AsyncGenerator[AsyncSession, None]:
     if SessionLocal is None:
-        raise RuntimeError("DB not initialized yet")
+        raise HTTPException(status_code=503, detail="Database is starting up")
 
     async with SessionLocal() as db:
         yield db

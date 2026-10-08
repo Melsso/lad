@@ -5,7 +5,7 @@ import {
   groupMessagesForDisplay,
   isToolResultFailure,
   toolLabel,
-} from "../../src/context/toolActivity";
+} from "../../src/lib/toolActivity";
 import { makeMessage } from "./test-utils";
 
 describe("toolLabel", () => {

@@ -12,6 +12,7 @@ class Settings(BaseSettings):
     RECENT_MESSAGES_TO_KEEP: int = 8
 
     ALLOWED_CLIENT_HOSTS: str = ""
+    MAX_TOOL_OUTPUT_CHARS: int = 6000
 
     OLLAMA_HOST: str = "http://host.docker.internal:11434"
     OLLAMA_MODEL: str = "qwen3:8b"

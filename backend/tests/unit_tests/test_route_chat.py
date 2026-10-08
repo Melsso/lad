@@ -185,7 +185,7 @@ def test_stream_msg_db_error_on_lookup(monkeypatch, client):
 
 def test_stream_msg_success_returns_sse_stream(monkeypatch, client):
     monkeypatch.setattr(
-        chat_routes, "get_chat", AsyncMock(return_value=MagicMock(id=1))
+        chat_routes, "get_chat", AsyncMock(return_value=MagicMock(id=1, mode="agent"))
     )
 
     async def fake_stream(chat_id, msg, attached_filenames=None):
@@ -206,7 +206,7 @@ def test_stream_msg_success_returns_sse_stream(monkeypatch, client):
 
 def test_stream_msg_rejects_too_many_files(monkeypatch, client):
     monkeypatch.setattr(
-        chat_routes, "get_chat", AsyncMock(return_value=MagicMock(id=1))
+        chat_routes, "get_chat", AsyncMock(return_value=MagicMock(id=1, mode="agent"))
     )
 
     def raise_too_many(files):
@@ -226,7 +226,7 @@ def test_stream_msg_rejects_too_many_files(monkeypatch, client):
 
 def test_stream_msg_rejects_invalid_extension(monkeypatch, client):
     monkeypatch.setattr(
-        chat_routes, "get_chat", AsyncMock(return_value=MagicMock(id=1))
+        chat_routes, "get_chat", AsyncMock(return_value=MagicMock(id=1, mode="agent"))
     )
 
     def raise_bad_extension(files):
@@ -246,7 +246,7 @@ def test_stream_msg_rejects_invalid_extension(monkeypatch, client):
 
 def test_stream_msg_saves_uploaded_files_and_passes_filenames(monkeypatch, client):
     monkeypatch.setattr(
-        chat_routes, "get_chat", AsyncMock(return_value=MagicMock(id=1))
+        chat_routes, "get_chat", AsyncMock(return_value=MagicMock(id=1, mode="agent"))
     )
     monkeypatch.setattr(chat_routes, "validate_uploads", lambda files: None)
     monkeypatch.setattr(chat_routes, "save_uploads", lambda chat_id, files: ["main.py"])
@@ -271,7 +271,7 @@ def test_stream_msg_saves_uploaded_files_and_passes_filenames(monkeypatch, clien
 
 def test_stream_msg_ignores_empty_file_part(monkeypatch, client):
     monkeypatch.setattr(
-        chat_routes, "get_chat", AsyncMock(return_value=MagicMock(id=1))
+        chat_routes, "get_chat", AsyncMock(return_value=MagicMock(id=1, mode="agent"))
     )
 
     validate_calls = []
@@ -312,7 +312,7 @@ def test_retry_msg_db_error_on_lookup(monkeypatch, client):
 
 def test_retry_msg_success_returns_sse_stream(monkeypatch, client):
     monkeypatch.setattr(
-        chat_routes, "get_chat", AsyncMock(return_value=MagicMock(id=1))
+        chat_routes, "get_chat", AsyncMock(return_value=MagicMock(id=1, mode="agent"))
     )
 
     async def fake_retry(chat_id):
@@ -355,3 +355,18 @@ def test_delete_chat_db_error(monkeypatch, client):
     response = client.delete("/chat/1")
 
     assert response.status_code == 500
+
+
+def test_stream_msg_rejects_files_for_chat_mode(monkeypatch, client):
+    monkeypatch.setattr(
+        chat_routes, "get_chat", AsyncMock(return_value=MagicMock(id=1, mode="chat"))
+    )
+
+    response = client.post(
+        "/chat/msg/stream",
+        data={"chat_id": 1, "msg": "hi"},
+        files=[("files", ("main.py", b"print(1)", "text/plain"))],
+    )
+
+    assert response.status_code == 400
+    assert "agent mode" in response.json()["detail"]

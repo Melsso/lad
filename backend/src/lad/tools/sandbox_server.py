@@ -15,11 +15,11 @@ def run_command(command: str, timeout: int = DEFAULT_TIMEOUT_SECONDS) -> str:
     """Runs a shell command inside an isolated sandbox scoped to this chat.
     Use this to write files, run builds, tests, or code. Files persist across
     calls within the same chat. The sandbox is offline with no credentials:
-    nothing can be downloaded or installed (pip/npm/cargo installs fail).
+    nothing can be downloaded or installed (pip/npm installs fail).
     Available: python3 (pytest, mypy, ruff, numpy, pandas, requests, fastapi,
     flask, pypdf and more), node (typescript, tsx, prettier, eslint, vitest),
-    go, rust/cargo, java, ruby, php, gcc/g++/make/cmake, git, jq, ripgrep,
-    sqlite3, shellcheck, pdftotext, zip/unzip/7z."""
+    ruby, php, gcc/g++/make/cmake, git, jq, ripgrep, sqlite3, shellcheck,
+    pdftotext, zip/unzip/7z."""
     chat_id = os.environ.get("LAD_CHAT_ID")
 
     if not chat_id:

@@ -8,11 +8,13 @@ from lad.core.embeddings import embed_query
 from lad.models.db import Chat, ConversationSummary
 
 server = MCPServer("lad-memory")
+MIN_TOP_K = 3
+MAX_TOP_K = 10
 
 
 @server.tool()
 async def recall_memory(query: str, top_k: int = 5) -> str:
-    top_k = max(top_k, 3)
+    top_k = min(max(top_k, MIN_TOP_K), MAX_TOP_K)
     current_chat_id = os.environ.get("LAD_CHAT_ID")
     query_embedding = await embed_query(query)
 

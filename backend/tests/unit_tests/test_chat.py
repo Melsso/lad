@@ -336,7 +336,7 @@ async def test_stream_chat_msg_triggers_summarization(
 
     summarize_calls = []
 
-    async def fake_generate_summary(*, existing_summary, messages):
+    async def fake_generate_summary(*, existing_summary, messages, model=None):
         summarize_calls.append(messages)
         return "condensed summary"
 
@@ -449,3 +449,72 @@ async def test_stream_chat_retry_handles_llm_failure(
     assert "event: error" in events[0]
     assert "Failed to generate a response" in events[0]
     session.rollback.assert_awaited_once()
+
+
+def test_split_for_summary_keeps_the_most_recent_messages(message_factory):
+    messages = [message_factory(i) for i in range(10)]
+
+    old, recent = chat_module._split_for_summary(messages, keep=4)
+
+    assert [m.id for m in old] == [0, 1, 2, 3, 4, 5]
+    assert [m.id for m in recent] == [6, 7, 8, 9]
+
+
+def test_split_for_summary_does_not_orphan_a_tool_result(message_factory):
+    messages = [
+        message_factory(0, role="user"),
+        message_factory(1, role="assistant"),
+        message_factory(2, role="tool_call"),
+        message_factory(3, role="tool_result"),
+        message_factory(4, role="assistant"),
+    ]
+
+    old, recent = chat_module._split_for_summary(messages, keep=2)
+
+    assert [m.id for m in old] == [0, 1]
+    assert [m.id for m in recent] == [2, 3, 4]
+
+
+def test_split_for_summary_with_nothing_to_summarize(message_factory):
+    messages = [
+        message_factory(0, role="tool_call"),
+        message_factory(1, role="tool_result"),
+    ]
+
+    old, recent = chat_module._split_for_summary(messages, keep=1)
+
+    assert old == []
+    assert [m.id for m in recent] == [0, 1]
+
+
+@pytest.mark.parametrize(
+    ("mode", "expected_model"),
+    [("agent", conf.OLLAMA_AGENT_MODEL), ("chat", None)],
+)
+async def test_summarization_uses_the_matching_model(
+    monkeypatch, wire, chat_factory, message_factory, mode, expected_model
+):
+    messages = [message_factory(i) for i in range(conf.SUMMARY_THRESHOLD)]
+    wire(chat_factory(1, mode=mode), messages=messages)
+
+    captured = {}
+
+    async def fake_generate_summary(*, existing_summary, messages, model=None):
+        captured["model"] = model
+        return "condensed"
+
+    async def fake_turn(db, chat_id, summary, active_messages):
+        yield format_sse_event("done", {"id": 1, "content": "ok"})
+
+    monkeypatch.setattr(chat_module, "generate_summary", fake_generate_summary)
+    monkeypatch.setattr(
+        chat_module,
+        "save_chat_summary",
+        AsyncMock(return_value=SimpleNamespace(content="condensed")),
+    )
+    monkeypatch.setattr(chat_module, "run_chat_turn", fake_turn)
+    monkeypatch.setattr(chat_module, "run_agent_turn", fake_turn)
+
+    await _collect(chat_module.stream_chat_msg(chat_id=1, msg="hi"))
+
+    assert captured["model"] == expected_model

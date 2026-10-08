@@ -21,6 +21,9 @@ services:
       ALLOWED_CLIENT_HOSTS: lad-nginx
     extra_hosts:
       - "host.docker.internal:host-gateway"
+    depends_on:
+      sandbox:
+        condition: service_healthy
     volumes:
       - ./chat_sandboxes:/data/chat_sandboxes
     networks:
@@ -38,12 +41,22 @@ services:
     networks:
       - sandbox-network
     mem_limit: 1g
-    cpus: 1
+    cpus: 0.5
     pids_limit: 128
     cap_drop:
       - ALL
     security_opt:
       - no-new-privileges:true
+    healthcheck:
+      test:
+        - CMD
+        - python3
+        - -c
+        - "import urllib.request; urllib.request.urlopen('http://localhost:8000/health', timeout=3)"
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 5s
 
 networks:
   lad-network:

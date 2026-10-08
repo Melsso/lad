@@ -204,3 +204,44 @@ async def test_list_tools_returns_everything_when_no_filter_given(monkeypatch):
     monkeypatch.setattr(client, "_list_tools_async", fake_list_tools_async)
 
     assert await client.list_tools() == tools
+
+
+async def test_list_tools_discovers_servers_only_once(monkeypatch):
+    client = mcp_module.MCPClient(
+        servers=[mcp_module.MCPServerConfig(name="x", command="python", args=[])]
+    )
+    tools = [ToolDefinition(name="web_search", description="", parameters={})]
+    calls = {"count": 0}
+
+    async def fake_list_tools_async():
+        calls["count"] += 1
+        return tools
+
+    monkeypatch.setattr(client, "_list_tools_async", fake_list_tools_async)
+
+    await client.list_tools()
+    await client.list_tools(allowed_tools={"web_search"})
+
+    assert calls["count"] == 1
+
+
+async def test_list_tools_does_not_cache_a_failed_discovery(monkeypatch):
+    client = mcp_module.MCPClient(
+        servers=[mcp_module.MCPServerConfig(name="x", command="python", args=[])]
+    )
+    tools = [ToolDefinition(name="web_search", description="", parameters={})]
+    calls = {"count": 0}
+
+    async def flaky_list_tools_async():
+        calls["count"] += 1
+        if calls["count"] == 1:
+            raise BaseExceptionGroup("boom", [ConnectionError("closed")])
+        return tools
+
+    monkeypatch.setattr(client, "_list_tools_async", flaky_list_tools_async)
+
+    with pytest.raises(RuntimeError):
+        await client.list_tools()
+
+    assert await client.list_tools() == tools
+    assert calls["count"] == 2

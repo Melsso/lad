@@ -79,7 +79,11 @@ export function MessageInput({ onSend, isStreaming, mode }: MessageInputProps) {
       return;
     }
 
-    const combined = [...files, ...selected];
+    const selectedNames = new Set(selected.map((file) => file.name));
+    const combined = [
+      ...files.filter((file) => !selectedNames.has(file.name)),
+      ...selected,
+    ];
 
     if (combined.length > MAX_FILES) {
       setFileError(`You can attach up to ${MAX_FILES} files.`);

@@ -19,7 +19,7 @@ RUN pip install --no-cache-dir poetry
 
 COPY pyproject.toml poetry.lock* /app/
 
-RUN poetry config virtualenvs.create false && poetry install --no-interaction --no-ansi --no-root
+RUN poetry config virtualenvs.create false && poetry install --no-interaction --no-ansi --no-root --without dev
 
 COPY src/ /app
 COPY logging.json /app/logging.json

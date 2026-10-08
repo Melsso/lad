@@ -5,7 +5,7 @@ import {
   describeToolCall,
   isToolResultFailure,
   toolLabel,
-} from "../../context/toolActivity";
+} from "../../lib/toolActivity";
 
 interface ToolActivityProps {
   call: ChatMessage;

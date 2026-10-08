@@ -6,7 +6,7 @@ import {
   retryMessage,
   streamMessage,
 } from "../services/chat";
-import { emitChatCreated } from "../context/chatEvents";
+import { emitChatCreated } from "../lib/chatEvents";
 import type { ChatMessage, StreamMessageHandlers } from "../types/chat";
 
 interface UseChatStreamResult {

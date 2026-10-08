@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 
 import { getChats } from "../services/chat";
-import { onChatCreated } from "../context/chatEvents";
+import { onChatCreated } from "../lib/chatEvents";
 import type { Chat } from "../types/chat";
 
 interface UseChatsResult {

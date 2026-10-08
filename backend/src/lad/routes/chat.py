@@ -155,7 +155,10 @@ async def stream_msg(
         for item in (await request.form()).getlist("files")
         if isinstance(item, UploadFile) and item.filename
     ]
-
+    if uploaded_files and chat.mode != "agent":
+        raise HTTPException(
+            status_code=400, detail="File uploads are only available in agent mode"
+        )
     try:
         validate_uploads(uploaded_files)
     except ValueError as exc:

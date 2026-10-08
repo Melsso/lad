@@ -133,6 +133,19 @@ async def save_chat_summary(
     return summary
 
 
+def _split_for_summary(
+    messages: list[Messages], keep: int
+) -> tuple[list[Messages], list[Messages]]:
+    """Split into (to_summarize, to_keep) without separating a tool result
+    from the tool call that produced it."""
+    split = max(len(messages) - keep, 0)
+
+    while 0 < split < len(messages) and messages[split].role == "tool_result":
+        split -= 1
+
+    return messages[:split], messages[split:]
+
+
 async def _stream_and_persist_reply(db: AsyncSession, chat: Chat) -> AsyncIterator[str]:
     chat_id = chat.id
 
@@ -146,11 +159,14 @@ async def _stream_and_persist_reply(db: AsyncSession, chat: Chat) -> AsyncIterat
     await db.commit()
 
     if len(active_messages) >= conf.SUMMARY_THRESHOLD:
-        messages_to_summarize = active_messages[: -conf.RECENT_MESSAGES_TO_KEEP]
+        messages_to_summarize, recent_messages = _split_for_summary(
+            active_messages, conf.RECENT_MESSAGES_TO_KEEP
+        )
         if messages_to_summarize:
             new_summary = await generate_summary(
                 existing_summary=(summary.content if summary else None),
                 messages=messages_to_summarize,
+                model=conf.OLLAMA_AGENT_MODEL if chat.mode == "agent" else None,
             )
 
             summary = await save_chat_summary(
@@ -159,7 +175,7 @@ async def _stream_and_persist_reply(db: AsyncSession, chat: Chat) -> AsyncIterat
                 content=new_summary,
                 last_message_id=messages_to_summarize[-1].id,
             )
-            active_messages = active_messages[-conf.RECENT_MESSAGES_TO_KEEP :]
+            active_messages = recent_messages
             await db.commit()
 
     summary_content = summary.content if summary else None

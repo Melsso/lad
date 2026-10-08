@@ -64,3 +64,17 @@ def test_web_search_handles_missing_fields_gracefully(monkeypatch):
     result = web_search_server.web_search("test query")
 
     assert "Untitled" in result
+
+
+def test_web_search_clamps_max_results_above_maximum(monkeypatch):
+    captured = {}
+
+    def fake_search_web(query, max_results=5):
+        captured["max_results"] = max_results
+        return []
+
+    monkeypatch.setattr(web_search_server, "search_web", fake_search_web)
+
+    web_search_server.web_search("test query", max_results=500)
+
+    assert captured["max_results"] == web_search_server.MAX_RESULTS

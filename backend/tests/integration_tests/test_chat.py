@@ -275,7 +275,7 @@ async def test_stream_chat_msg_triggers_real_summarization(monkeypatch, db_sessi
         chat_module, "get_db_session", lambda: _fake_context(db_session)
     )
 
-    async def fake_generate_summary(*, existing_summary, messages):
+    async def fake_generate_summary(*, existing_summary, messages, model=None):
         assert len(messages) == threshold + 1 - keep
         return "condensed summary"
 

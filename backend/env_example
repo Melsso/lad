@@ -4,6 +4,8 @@ DB_NAME=local_lad_db
 DB_HOST=lad-db
 DB_PORT=5432
 
+MAX_TOOL_OUTPUT_CHARS=6000
+
 OLLAMA_HOST=http://host.docker.internal:11434
 OLLAMA_MODEL=qwen3:8b
 OLLAMA_AGENT_MODEL=gemma4:12b

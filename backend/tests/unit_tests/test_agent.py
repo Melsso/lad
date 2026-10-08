@@ -562,3 +562,50 @@ async def test_chat_and_agent_turns_use_independent_iteration_caps(
 
     assert offered_tools[0] is None
     assert offered_tools[1] == [tool]
+
+
+def test_truncate_leaves_short_text_alone():
+    assert agent_module._truncate("short", 100) == "short"
+
+
+def test_truncate_keeps_head_and_tail_and_reports_omitted_count():
+    result = agent_module._truncate("a" * 50 + "b" * 50, 20)
+
+    assert result.startswith("a" * 10)
+    assert result.endswith("b" * 10)
+    assert "[80 characters truncated]" in result
+
+
+async def test_run_agent_turn_truncates_large_tool_output(monkeypatch, mock_session):
+    tool = ToolDefinition(name="run_command", description="", parameters={})
+    _list_tools(monkeypatch, [tool])
+    monkeypatch.setattr(agent_module.conf, "MAX_TOOL_OUTPUT_CHARS", 100)
+
+    captured = []
+
+    async def fake_generate_turn(*, messages, tools, model=None):
+        captured.append([dict(m) for m in messages])
+        if len(captured) == 1:
+            return LLMTurn(
+                content="",
+                tool_calls=[
+                    ToolCall(call_id="call_0", name="run_command", arguments={})
+                ],
+            )
+        return LLMTurn(content="done", tool_calls=[])
+
+    monkeypatch.setattr(agent_module, "generate_turn", fake_generate_turn)
+    monkeypatch.setattr(
+        agent_module.mcp_client, "call_tool", AsyncMock(return_value="x" * 1000)
+    )
+
+    events = await _events(
+        agent_module.run_agent_turn(mock_session, chat_id=1, summary=None, history=[])
+    )
+
+    tool_message = captured[1][-1]
+    assert len(tool_message["content"]) < 200
+    assert "characters truncated" in tool_message["content"]
+
+    stored = next(data for event, data in events if event == "tool_result")
+    assert stored["content"] == tool_message["content"]

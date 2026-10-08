@@ -28,7 +28,7 @@ RUN python3 -m venv /opt/app-venv \
     && /opt/app-venv/bin/pip install poetry \
     && . /opt/app-venv/bin/activate \
     && poetry config virtualenvs.create false \
-    && poetry install --no-interaction --no-ansi --no-root
+    && poetry install --no-interaction --no-ansi --no-root --without dev
 
 COPY src/ /app
 

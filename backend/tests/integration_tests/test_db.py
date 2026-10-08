@@ -1,5 +1,6 @@
 import pytest
 import pytest_asyncio
+from fastapi import HTTPException
 from sqlalchemy import text
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
@@ -128,8 +129,10 @@ async def test_get_db_raises_when_uninitialized(monkeypatch):
 
     generator = db_module.get_db()
 
-    with pytest.raises(RuntimeError, match="not initialized"):
+    with pytest.raises(HTTPException) as exc_info:
         await anext(generator)
+
+    assert exc_info.value.status_code == 503
 
 
 async def test_get_db_yields_a_working_session_and_closes_it(monkeypatch, async_engine):

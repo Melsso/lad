@@ -51,6 +51,7 @@ class MCPClient:
     def __init__(self, servers: list[MCPServerConfig]):
         self._servers = servers
         self._tool_owners: dict[str, MCPServerConfig] = {}
+        self._definitions: list[ToolDefinition] | None = None
 
     async def list_tools(
         self, allowed_tools: set[str] | None = None
@@ -58,15 +59,16 @@ class MCPClient:
         if not self._servers:
             return []
 
-        try:
-            definitions = await self._list_tools_async()
-        except BaseExceptionGroup as group:
-            raise RuntimeError(_describe_exception(group)) from group
+        if self._definitions is None:
+            try:
+                self._definitions = await self._list_tools_async()
+            except BaseExceptionGroup as group:
+                raise RuntimeError(_describe_exception(group)) from group
 
         if allowed_tools is None:
-            return definitions
+            return self._definitions
 
-        return [d for d in definitions if d.name in allowed_tools]
+        return [d for d in self._definitions if d.name in allowed_tools]
 
     async def _list_tools_async(self) -> list[ToolDefinition]:
         definitions: list[ToolDefinition] = []

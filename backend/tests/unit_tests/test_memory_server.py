@@ -92,3 +92,12 @@ async def test_recall_memory_formats_results_with_chat_title_and_date(monkeypatc
     assert result == (
         "# Deployment plan (chat 3, 2026-01-15)\nDecided to use Docker Compose."
     )
+
+
+async def test_recall_memory_clamps_top_k_above_maximum(monkeypatch):
+    monkeypatch.delenv("LAD_CHAT_ID", raising=False)
+    session = _patch_session(monkeypatch, [])
+
+    await memory_server.recall_memory("anything", top_k=500)
+
+    assert memory_server.MAX_TOP_K in _executed_params(session).values()

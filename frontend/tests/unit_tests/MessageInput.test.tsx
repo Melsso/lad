@@ -136,4 +136,25 @@ describe("MessageInput", () => {
 
     expect(screen.queryByText("main.py")).not.toBeInTheDocument();
   });
+  
+  it("replaces an already attached file when the same name is selected again", async () => {
+    const user = userEvent.setup();
+
+    render(<MessageInput onSend={vi.fn()} isStreaming={false} mode="agent" />);
+
+    const fileInput = document.querySelector(
+      'input[type="file"]',
+    ) as HTMLInputElement;
+
+    await user.upload(
+      fileInput,
+      new File(["one"], "main.py", { type: "text/plain" }),
+    );
+    await user.upload(
+      fileInput,
+      new File(["two"], "main.py", { type: "text/plain" }),
+    );
+
+    expect(screen.getAllByText("main.py")).toHaveLength(1);
+  });
 });
