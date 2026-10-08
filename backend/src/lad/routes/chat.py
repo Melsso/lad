@@ -155,6 +155,7 @@ async def stream_msg(
         for item in (await request.form()).getlist("files")
         if isinstance(item, UploadFile) and item.filename
     ]
+    await db.refresh(chat, ["mode"])
     if uploaded_files and chat.mode != "agent":
         raise HTTPException(
             status_code=400, detail="File uploads are only available in agent mode"

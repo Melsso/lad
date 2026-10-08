@@ -5,6 +5,9 @@ React frontend, Postgres with pgvector, and Ollama for local LLM inference.
 There is no external LLM API: inference runs on your machine, and the only
 outbound request is the optional Tavily web search.
 
+## Demo
+https://github.com/user-attachments/assets/173c6464-5a8d-4fe6-8bbb-6c55bdfd601d
+
 ## Architecture
 
 ```
