@@ -184,7 +184,7 @@ async def run_part_2(client: httpx.AsyncClient) -> None:
     print("=" * 70)
     print(
         "Note: any slowdown under concurrency is expected -- the sandbox "
-        "container has a fixed 0.5 CPU / 512MB budget shared by every chat. "
+        "container has a fixed 0.5 CPU / 1g budget shared by every chat. "
         "The only real pass/fail here is the contamination check."
     )
 

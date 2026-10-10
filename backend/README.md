@@ -93,7 +93,7 @@ All routes are under `/chat`, except chat listing under `/app`.
 | `GET` | `/chat/messages?chat_id=` | full message history |
 | `PATCH` | `/chat/title` | `{chat_id, title}` |
 | `DELETE` | `/chat/{chat_id}` | also removes the chat's sandbox directory |
-| `POST` | `/chat/msg/stream` | **multipart**: `chat_id`, `msg`, optional `files[]` (agent chats only, otherwise `400`); responds with an SSE stream |
+| `POST` | `/chat/msg/stream` | **multipart**: `chat_id`, `msg`, optional `files` (agent chats only, otherwise `400`); responds with an SSE stream |
 | `POST` | `/chat/msg/retry` | `{chat_id}`: regenerates a reply for the last unanswered turn |
 
 Errors: `403` for requests that don't come from an allowed client, `503` while

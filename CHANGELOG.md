@@ -4,12 +4,11 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project uses
 [Semantic Versioning](https://semver.org/).
 
-## [0.1.0] - Unreleased
+## [0.1.0] - 2026-10-10
 
-First version.
+First release.
 
 ### Added
-
 - Chat UI (React, TypeScript, Vite, Tailwind) with SSE replies, markdown, GFM
   and KaTeX rendering, chat rename and delete, retry of unanswered turns, and
   favicon states for processing and ready.
@@ -29,13 +28,14 @@ First version.
   process-group kill on timeout.
 - Local inference through Ollama, with configurable chat, agent and embedding
   models.
-- Unit and integration test suites for the backend, frontend and sandbox, with
-  a CI workflow for each.
+- Unit and integration test suites for the backend and frontend, a test suite for
+  the sandbox, and a CI workflow for each.
 - `load_test_crud.py` and `profile_llm.py` scripts, and `start.sh` / `stop.sh`
   to run the whole stack.
+- GitHub Actions release workflow: pushing a `v*` tag creates a GitHub release
+  using the matching CHANGELOG section as its notes.
 
 ### Security
-
 - The API only accepts requests from nginx, so the sandbox can't call back into
   it.
 - nginx and Postgres are published on loopback only.

@@ -74,7 +74,7 @@ file count, size limit) mirror the backend's `helpers/uploads.py` for fast
 feedback, but the backend is the real validation boundary. Selecting a file
 with the same name as one already attached replaces it, matching the backend's
 overwrite behavior. Messages are sent as `multipart/form-data` (`chat_id`,
-`msg`, `files[]`) through `services/chat.ts::streamMessage`.
+`msg`, `files`) through `services/chat.ts::streamMessage`.
 
 ## Testing
 

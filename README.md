@@ -1,5 +1,7 @@
 # LAD (Local AI Daemon)
 
+Version 0.1.0 · [Changelog](./CHANGELOG.md) · MIT
+
 A personal, locally hosted ChatGPT/Claude-style chat app: FastAPI backend,
 React frontend, Postgres with pgvector, and Ollama for local LLM inference.
 There is no external LLM API: inference runs on your machine, and the only
@@ -128,3 +130,7 @@ LAD has no authentication and is meant for a single local user.
 There is no migration tooling: schema changes require a database reset. Each
 sub-project has its own test suite and CI workflow (`.github/workflows/`); see
 the sub-project READMEs for the exact commands.
+
+## License
+
+MIT, see [LICENSE](./LICENSE).
